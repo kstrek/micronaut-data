@@ -41,7 +41,6 @@ import io.micronaut.data.jdbc.runtime.PreparedStatementCallback;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.DataType;
 import io.micronaut.data.model.Page;
-import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.query.JoinPath;
 import io.micronaut.data.model.query.builder.sql.Dialect;
 import io.micronaut.data.model.query.builder.sql.SqlQueryBuilder;
@@ -209,7 +208,7 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("Cascading PERSIST for '{}' association: '{}'", persistentEntity.getName(), cascadeOp.ctx.associations);
                     }
-                    JdbcEntityOperations<Object> op = new JdbcEntityOperations<>(childPersistentEntity, child);
+                    JdbcEntityOperations<Object> op = new JdbcEntityOperations<>(childPersistentEntity, child, true);
                     DBOperation childSqlPersistOperation = resolveEntityInsert(annotationMetadata, repositoryType, child.getClass(), childPersistentEntity);
                     persistOne(connection, cascadeOneOp.annotationMetadata, cascadeOneOp.repositoryType, childSqlPersistOperation, associations, persisted, op);
                     entity = afterCascadedOne(entity, cascadeOp.ctx.associations, child, op.entity);
@@ -248,7 +247,7 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
                             continue;
                         }
 
-                        JdbcEntityOperations<Object> op = new JdbcEntityOperations<>(childPersistentEntity, child);
+                        JdbcEntityOperations<Object> op = new JdbcEntityOperations<>(childPersistentEntity, child, true);
 
                         RuntimePersistentProperty<Object> identity = childPersistentEntity.getIdentity();
                         if (identity.getProperty().get(child) == null) {
@@ -281,7 +280,7 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
                     );
 
                     if (isSupportsBatchInsert(childPersistentEntity, dialect)) {
-                        JdbcEntitiesOperations<Object> op = new JdbcEntitiesOperations<>(childPersistentEntity, cascadeManyOp.children);
+                        JdbcEntitiesOperations<Object> op = new JdbcEntitiesOperations<>(childPersistentEntity, cascadeManyOp.children, true);
                         op.veto(persisted::contains);
                         RuntimePersistentProperty<Object> identity = childPersistentEntity.getIdentity();
                         op.veto(e -> identity.getProperty().get(e) != null && !(identity instanceof Association));
@@ -304,7 +303,7 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
                                 continue;
                             }
 
-                            JdbcEntityOperations<Object> op = new JdbcEntityOperations<>(childPersistentEntity, child);
+                            JdbcEntityOperations<Object> op = new JdbcEntityOperations<>(childPersistentEntity, child, true);
 
                             persistOne(connection,
                                     cascadeManyOp.annotationMetadata,
@@ -360,19 +359,6 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
     @Override
     protected AutoCloseable autoCloseable(PreparedStatement preparedStatement) {
         return preparedStatement;
-    }
-
-    @Override
-    protected void prepareStatement(Connection connection, Dialect dialect, PersistentProperty identity, boolean hasGeneratedID, String insertSql, DBOperation1<PreparedStatement, SQLException> fn) throws SQLException {
-        if (hasGeneratedID && (dialect == Dialect.ORACLE || dialect == Dialect.SQL_SERVER)) {
-            try (PreparedStatement stmt = connection.prepareStatement(insertSql, new String[]{identity.getPersistedName()})) {
-                fn.process(stmt);
-            }
-        } else {
-            try (PreparedStatement stmt = connection.prepareStatement(insertSql, hasGeneratedID ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS)) {
-                fn.process(stmt);
-            }
-        }
     }
 
     @NonNull
@@ -747,7 +733,7 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
         SqlQueryBuilder queryBuilder = queryBuilders.getOrDefault(repositoryType, DEFAULT_SQL_BUILDER);
         StoredSqlOperation dbOperation = new StoredQuerySqlOperation(queryBuilder, operation.getStoredQuery());
         return transactionOperations.executeWrite((status) -> {
-            JdbcEntityOperations<T> op = new JdbcEntityOperations<>(getEntity(operation.getRootEntity()), operation.getEntity());
+            JdbcEntityOperations<T> op = new JdbcEntityOperations<>(getEntity(operation.getRootEntity()), operation.getEntity(), true);
             persistOne(status.getConnection(), annotationMetadata, repositoryType, dbOperation, Collections.emptyList(), new HashSet<>(5), op);
             return op;
         }).entity;
@@ -787,14 +773,13 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
             final AnnotationMetadata annotationMetadata = operation.getAnnotationMetadata();
             final Class<?> repositoryType = operation.getRepositoryType();
             SqlQueryBuilder sqlQueryBuilder = queryBuilders.getOrDefault(repositoryType, DEFAULT_SQL_BUILDER);
-            final Dialect dialect = sqlQueryBuilder.dialect();
             StoredSqlOperation dbOperation = new StoredQuerySqlOperation(sqlQueryBuilder, operation.getStoredQuery());
             final RuntimePersistentEntity<T> persistentEntity = getEntity(operation.getRootEntity());
             final HashSet<Object> persisted = new HashSet<>(5);
             if (!isSupportsBatchInsert(persistentEntity, sqlQueryBuilder.dialect())) {
                 return operation.split().stream()
                         .map(persistOp -> {
-                            JdbcEntityOperations<T> op = new JdbcEntityOperations<>(persistentEntity, persistOp.getEntity());
+                            JdbcEntityOperations<T> op = new JdbcEntityOperations<>(persistentEntity, persistOp.getEntity(), true);
                             persistOne(
                                     status.getConnection(),
                                     annotationMetadata,
@@ -807,7 +792,7 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
                         })
                         .collect(Collectors.toList());
             } else {
-                JdbcEntitiesOperations<T> op = new JdbcEntitiesOperations<>(persistentEntity, operation);
+                JdbcEntitiesOperations<T> op = new JdbcEntitiesOperations<>(persistentEntity, operation, true);
                 persistInBatch(
                         status.getConnection(),
                         operation.getAnnotationMetadata(),
@@ -978,12 +963,20 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
 
     private final class JdbcEntityOperations<T> extends EntityOperations<T> {
 
+        private final boolean insert;
+        private final boolean hasGeneratedId;
         private T entity;
         private Integer rowsUpdated;
         private Map<QueryParameterBinding, Object> previousValues;
 
         private JdbcEntityOperations(RuntimePersistentEntity<T> persistentEntity, T entity) {
+            this(persistentEntity, entity, false);
+        }
+
+        private JdbcEntityOperations(RuntimePersistentEntity<T> persistentEntity, T entity, boolean insert) {
             super(persistentEntity);
+            this.insert = insert;
+            this.hasGeneratedId = insert && persistentEntity.getIdentity() != null && persistentEntity.getIdentity().isGenerated();
             Objects.requireNonNull(entity, "Passed entity cannot be null");
             this.entity = entity;
         }
@@ -1003,16 +996,26 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
         }
 
         @Override
-        protected void collectAutoPopulatedPreviousValues(DBOperation sqlOperation) {
-            previousValues = sqlOperation.collectAutoPopulatedPreviousValues(persistentEntity, entity);
+        protected void collectAutoPopulatedPreviousValues(DBOperation dbOperation) {
+            previousValues = dbOperation.collectAutoPopulatedPreviousValues(persistentEntity, entity);
         }
 
         @Override
-        protected PreparedStatement prepare(Connection connection, DBOperation sqlOperation) throws SQLException {
-            if (StoredSqlOperation.class.isInstance(sqlOperation)) {
-                ((StoredSqlOperation) sqlOperation).checkForParameterToBeExpanded(persistentEntity, entity);
+        protected PreparedStatement prepare(Connection connection, DBOperation dbOperation) throws SQLException {
+            if (StoredSqlOperation.class.isInstance(dbOperation)) {
+                ((StoredSqlOperation) dbOperation).checkForParameterToBeExpanded(persistentEntity, entity);
             }
-            return connection.prepareStatement(sqlOperation.getQuery());
+            if (insert) {
+                StoredSqlOperation sqlOperation = (StoredSqlOperation) dbOperation;
+                Dialect dialect = sqlOperation.getDialect();
+                if (hasGeneratedId && (dialect == Dialect.ORACLE || dialect == Dialect.SQL_SERVER)) {
+                    return connection.prepareStatement(dbOperation.getQuery(), new String[]{persistentEntity.getIdentity().getPersistedName()});
+                } else {
+                    return connection.prepareStatement(dbOperation.getQuery(), hasGeneratedId ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS);
+                }
+            } else {
+                return connection.prepareStatement(dbOperation.getQuery());
+            }
         }
 
         @Override
@@ -1030,19 +1033,16 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
         @Override
         protected void executeUpdate(PreparedStatement stmt) throws SQLException {
             rowsUpdated = stmt.executeUpdate();
-        }
-
-        @Override
-        protected void executeUpdateSetGeneratedId(PreparedStatement stmt) throws SQLException {
-            rowsUpdated = stmt.executeUpdate();
-            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
-                if (generatedKeys.next()) {
-                    RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
-                    Object id = columnIndexResultSetReader.readDynamic(generatedKeys, 1, identity.getDataType());
-                    BeanProperty<T, Object> property = (BeanProperty<T, Object>) identity.getProperty();
-                    entity = updateEntityId(property, entity, id);
-                } else {
-                    throw new DataAccessException("Failed to generate ID for entity: " + entity);
+            if (hasGeneratedId) {
+                try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
+                        Object id = columnIndexResultSetReader.readDynamic(generatedKeys, 1, identity.getDataType());
+                        BeanProperty<T, Object> property = (BeanProperty<T, Object>) identity.getProperty();
+                        entity = updateEntityId(property, entity, id);
+                    } else {
+                        throw new DataAccessException("Failed to generate ID for entity: " + entity);
+                    }
                 }
             }
         }
@@ -1076,10 +1076,18 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
     private final class JdbcEntitiesOperations<T> extends EntitiesOperations<T> {
 
         private final List<Data> entities;
+        private final boolean insert;
+        private final boolean hasGeneratedId;
         private int rowsUpdated;
 
         private JdbcEntitiesOperations(RuntimePersistentEntity<T> persistentEntity, Iterable<T> entities) {
+            this(persistentEntity, entities, false);
+        }
+
+        private JdbcEntitiesOperations(RuntimePersistentEntity<T> persistentEntity, Iterable<T> entities, boolean insert) {
             super(persistentEntity);
+            this.insert = insert;
+            this.hasGeneratedId = insert && persistentEntity.getIdentity() != null && persistentEntity.getIdentity().isGenerated();
             Objects.requireNonNull(entities, "Entities cannot be null");
             if (!entities.iterator().hasNext()) {
                 throw new IllegalStateException("Entities cannot be empty");
@@ -1132,8 +1140,18 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
         }
 
         @Override
-        protected PreparedStatement prepare(Connection connection, DBOperation sqlOperation) throws SQLException {
-            return connection.prepareStatement(sqlOperation.getQuery());
+        protected PreparedStatement prepare(Connection connection, DBOperation dbOperation) throws SQLException {
+            if (insert) {
+                StoredSqlOperation sqlOperation = (StoredSqlOperation) dbOperation;
+                Dialect dialect = sqlOperation.getDialect();
+                if (hasGeneratedId && (dialect == Dialect.ORACLE || dialect == Dialect.SQL_SERVER)) {
+                    return connection.prepareStatement(dbOperation.getQuery(), new String[]{persistentEntity.getIdentity().getPersistedName()});
+                } else {
+                    return connection.prepareStatement(dbOperation.getQuery(), hasGeneratedId ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS);
+                }
+            } else {
+                return connection.prepareStatement(dbOperation.getQuery());
+            }
         }
 
         @Override
@@ -1190,6 +1208,29 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
         @Override
         protected void executeUpdate(PreparedStatement stmt) throws SQLException {
             rowsUpdated = Arrays.stream(stmt.executeBatch()).sum();
+            if (hasGeneratedId) {
+                RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
+                List<Object> ids = new ArrayList<>();
+                try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                    while (generatedKeys.next()) {
+                        ids.add(columnIndexResultSetReader.readDynamic(generatedKeys, 1, identity.getDataType()));
+                    }
+                }
+                Iterator<Object> iterator = ids.iterator();
+                for (Data d : entities) {
+                    if (d.vetoed) {
+                        continue;
+                    }
+                    if (!iterator.hasNext()) {
+                        throw new DataAccessException("Failed to generate ID for entity: " + d.entity);
+                    } else {
+                        Object id = iterator.next();
+                        d.entity = updateEntityId((BeanProperty<T, Object>) identity.getProperty(), d.entity, id);
+                    }
+                }
+            } else {
+                rowsUpdated = Arrays.stream(stmt.executeBatch()).sum();
+            }
         }
 
         @Override
@@ -1197,30 +1238,6 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
             rowsUpdated = Arrays.stream(stmt.executeBatch()).sum();
             int expected = (int) entities.stream().filter(d -> !d.vetoed).count();
             fn.process(expected, rowsUpdated);
-        }
-
-        @Override
-        protected void executeUpdateSetGeneratedId(PreparedStatement stmt) throws SQLException {
-            RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
-            rowsUpdated = Arrays.stream(stmt.executeBatch()).sum();
-            List<Object> ids = new ArrayList<>();
-            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
-                while (generatedKeys.next()) {
-                    ids.add(columnIndexResultSetReader.readDynamic(generatedKeys, 1, identity.getDataType()));
-                }
-            }
-            Iterator<Object> iterator = ids.iterator();
-            for (Data d : entities) {
-                if (d.vetoed) {
-                    continue;
-                }
-                if (!iterator.hasNext()) {
-                    throw new DataAccessException("Failed to generate ID for entity: " + d.entity);
-                } else {
-                    Object id = iterator.next();
-                    d.entity = updateEntityId((BeanProperty<T, Object>) identity.getProperty(), d.entity, id);
-                }
-            }
         }
 
         protected List<T> getEntities() {

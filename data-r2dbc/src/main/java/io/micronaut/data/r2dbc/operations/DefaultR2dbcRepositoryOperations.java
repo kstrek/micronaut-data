@@ -36,7 +36,6 @@ import io.micronaut.data.exceptions.NonUniqueResultException;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.DataType;
 import io.micronaut.data.model.Page;
-import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.query.JoinPath;
 import io.micronaut.data.model.query.builder.sql.Dialect;
 import io.micronaut.data.model.query.builder.sql.SqlQueryBuilder;
@@ -204,7 +203,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("Cascading PERSIST for '{}' association: '{}'", persistentEntity.getName(), cascadeOp.ctx.associations);
                     }
-                    R2dbcEntityOperations<Object> op = new R2dbcEntityOperations<>(childPersistentEntity, child);
+                    R2dbcEntityOperations<Object> op = new R2dbcEntityOperations<>(childPersistentEntity, child, true);
                     DBOperation childSqlPersistOperation = resolveEntityInsert(annotationMetadata, repositoryType, child.getClass(), childPersistentEntity);
                     persistOne(connection, cascadeOneOp.annotationMetadata, cascadeOneOp.repositoryType, childSqlPersistOperation, associations, persisted, op);
                     entity = entity.flatMap(e -> op.data.map(childData -> afterCascadedOne(e, cascadeOp.ctx.associations, child, childData.entity)));
@@ -258,7 +257,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                             continue;
                         }
 
-                        R2dbcEntityOperations<Object> op = new R2dbcEntityOperations<>(childPersistentEntity, child);
+                        R2dbcEntityOperations<Object> op = new R2dbcEntityOperations<>(childPersistentEntity, child, true);
 
                         if (childPersistentEntity.getIdentity().getProperty().get(child) == null) {
                             if (childSqlInsertOperation == null) {
@@ -289,7 +288,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                             childPersistentEntity
                     );
                     if (isSupportsBatchInsert(persistentEntity, dialect)) {
-                        R2dbcEntitiesOperations<Object> op = new R2dbcEntitiesOperations<>(childPersistentEntity, cascadeManyOp.children);
+                        R2dbcEntitiesOperations<Object> op = new R2dbcEntitiesOperations<>(childPersistentEntity, cascadeManyOp.children, true);
                         op.veto(persisted::contains);
                         RuntimePersistentProperty<Object> identity = childPersistentEntity.getIdentity();
                         op.veto(e -> identity.getProperty().get(e) != null && !(identity instanceof Association));
@@ -316,7 +315,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                                 continue;
                             }
 
-                            R2dbcEntityOperations<Object> op = new R2dbcEntityOperations<>(childPersistentEntity, child);
+                            R2dbcEntityOperations<Object> op = new R2dbcEntityOperations<>(childPersistentEntity, child, true);
 
                             persistOne(connection,
                                     cascadeManyOp.annotationMetadata,
@@ -378,15 +377,6 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
     @Override
     protected AutoCloseable autoCloseable(Statement statement) {
         return NOOP;
-    }
-
-    @Override
-    protected void prepareStatement(Connection connection, Dialect dialect, PersistentProperty identity, boolean hasGeneratedID, String insertSql, DBOperation1<Statement, RuntimeException> fn) {
-        Statement statement = connection.createStatement(insertSql);
-        if (hasGeneratedID) {
-            statement.returnGeneratedValues(identity.getPersistedName());
-        }
-        fn.process(statement);
     }
 
     private Mono<Integer> sum(Stream<Mono<Integer>> stream) {
@@ -845,7 +835,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                     return concatMono(
                             operation.split().stream()
                                     .map(persistOp -> {
-                                        R2dbcEntityOperations<T> op = new R2dbcEntityOperations<>(persistentEntity, persistOp.getEntity());
+                                        R2dbcEntityOperations<T> op = new R2dbcEntityOperations<>(persistentEntity, persistOp.getEntity(), true);
                                         persistOne(
                                                 status.getConnection(),
                                                 annotationMetadata,
@@ -858,7 +848,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                                     })
                     );
                 } else {
-                    R2dbcEntitiesOperations<T> op = new R2dbcEntitiesOperations<>(persistentEntity, operation);
+                    R2dbcEntitiesOperations<T> op = new R2dbcEntitiesOperations<>(persistentEntity, operation, true);
                     persistInBatch(
                             status.getConnection(),
                             operation.getAnnotationMetadata(),
@@ -887,7 +877,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             final Set<Object> persisted = new HashSet<>(10);
             StoredSqlOperation dbOperation = new StoredQuerySqlOperation(queryBuilder, operation.getStoredQuery());
             return Flux.from(withNewOrExistingTransaction(operation, true, status -> {
-                R2dbcEntityOperations<T> op = new R2dbcEntityOperations<>(getEntity(operation.getRootEntity()), operation.getEntity());
+                R2dbcEntityOperations<T> op = new R2dbcEntityOperations<>(getEntity(operation.getRootEntity()), operation.getEntity(), true);
                 persistOne(status.getConnection(), annotationMetadata, operation.getRepositoryType(), dbOperation, Collections.emptyList(), persisted, op);
                 return op.getEntity();
             })).as(DefaultR2dbcRepositoryOperations::toSingleResult);
@@ -1066,10 +1056,18 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
 
     private final class R2dbcEntityOperations<T> extends EntityOperations<T> {
 
+        private final boolean insert;
+        private final boolean hasGeneratedId;
         private Mono<Data> data;
 
         protected R2dbcEntityOperations(RuntimePersistentEntity<T> persistentEntity, T entity) {
+            this(persistentEntity, entity, false);
+        }
+
+        protected R2dbcEntityOperations(RuntimePersistentEntity<T> persistentEntity, T entity, boolean insert) {
             super(persistentEntity);
+            this.insert = insert;
+            this.hasGeneratedId = insert && persistentEntity.getIdentity() != null && persistentEntity.getIdentity().isGenerated();
             Data data = new Data();
             data.entity = entity;
             this.data = Mono.just(data);
@@ -1127,7 +1125,11 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                     return d;
                 });
             }
-            return connection.createStatement(sqlOperation.getQuery());
+            Statement statement = connection.createStatement(sqlOperation.getQuery());
+            if (hasGeneratedId) {
+                return statement.returnGeneratedValues(persistentEntity.getIdentity().getPersistedName());
+            }
+            return statement;
         }
 
         @Override
@@ -1157,33 +1159,32 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
 
         @Override
         protected void executeUpdate(Statement stmt) throws RuntimeException {
-            data = data.flatMap(d -> {
-                if (d.vetoed) {
-                    return Mono.just(d);
-                }
-                return Flux.from(stmt.execute()).flatMap(r -> Flux.from(r.getRowsUpdated()))
-                        // Remove in the future: unneeded call "getRowsUpdated" is required for some drivers
-                        .as(DefaultR2dbcRepositoryOperations::toSingleResult)
-                        .thenReturn(d);
-            });
-        }
-
-        @Override
-        protected void executeUpdateSetGeneratedId(Statement stmt) throws RuntimeException {
-            data = data.flatMap(d -> {
-                if (d.vetoed) {
-                    return Mono.just(d);
-                }
-                RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
-                return Flux.from(stmt.execute()).flatMap(result ->
-                                Flux.from(result.map((row, rowMetadata) ->
-                                        columnIndexResultSetReader.readDynamic(row, 0, identity.getDataType()))))
-                        .as(DefaultR2dbcRepositoryOperations::toSingleResult).map(id -> {
-                            BeanProperty<T, Object> property = (BeanProperty<T, Object>) identity.getProperty();
-                            d.entity = updateEntityId(property, d.entity, id);
-                            return d;
-                        });
-            });
+            if (hasGeneratedId) {
+                data = data.flatMap(d -> {
+                    if (d.vetoed) {
+                        return Mono.just(d);
+                    }
+                    RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
+                    return Flux.from(stmt.execute()).flatMap(result ->
+                                    Flux.from(result.map((row, rowMetadata) ->
+                                            columnIndexResultSetReader.readDynamic(row, 0, identity.getDataType()))))
+                            .as(DefaultR2dbcRepositoryOperations::toSingleResult).map(id -> {
+                                BeanProperty<T, Object> property = (BeanProperty<T, Object>) identity.getProperty();
+                                d.entity = updateEntityId(property, d.entity, id);
+                                return d;
+                            });
+                });
+            } else {
+                data = data.flatMap(d -> {
+                    if (d.vetoed) {
+                        return Mono.just(d);
+                    }
+                    return Flux.from(stmt.execute()).flatMap(r -> Flux.from(r.getRowsUpdated()))
+                            // Remove in the future: unneeded call "getRowsUpdated" is required for some drivers
+                            .as(DefaultR2dbcRepositoryOperations::toSingleResult)
+                            .thenReturn(d);
+                });
+            }
         }
 
         @Override
@@ -1245,11 +1246,19 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
 
     private final class R2dbcEntitiesOperations<T> extends EntitiesOperations<T> {
 
+        private final boolean insert;
+        private final boolean hasGeneratedId;
         private Flux<Data> entities;
         private Mono<Integer> rowsUpdated;
 
         private R2dbcEntitiesOperations(RuntimePersistentEntity<T> persistentEntity, Iterable<T> entities) {
+            this(persistentEntity, entities, false);
+        }
+
+        private R2dbcEntitiesOperations(RuntimePersistentEntity<T> persistentEntity, Iterable<T> entities, boolean insert) {
             super(persistentEntity);
+            this.insert = insert;
+            this.hasGeneratedId = insert && persistentEntity.getIdentity() != null && persistentEntity.getIdentity().isGenerated();
             Objects.requireNonNull(entities, "Entities cannot be null");
             if (!entities.iterator().hasNext()) {
                 throw new IllegalStateException("Entities cannot be empty");
@@ -1273,8 +1282,12 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
         }
 
         @Override
-        protected Statement prepare(Connection connection, DBOperation sqlOperation) throws RuntimeException {
-            return connection.createStatement(sqlOperation.getQuery());
+        protected Statement prepare(Connection connection, DBOperation dbOperation) throws RuntimeException {
+            Statement statement = connection.createStatement(dbOperation.getQuery());
+            if (hasGeneratedId) {
+                return statement.returnGeneratedValues(persistentEntity.getIdentity().getPersistedName());
+            }
+            return statement;
         }
 
         @Override
@@ -1359,15 +1372,46 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
 
         @Override
         protected void executeUpdate(Statement stmt) {
-            entities = entities.collectList()
-                    .flatMapMany(e -> {
-                        List<Data> notVetoedEntities = e.stream().filter(this::notVetoed).collect(Collectors.toList());
-                        if (notVetoedEntities.isEmpty()) {
-                            return Flux.fromIterable(e);
-                        }
-                        // Remove in the future: unneeded call "getRowsUpdated" is required for some drivers
-                        return Flux.from(stmt.execute()).flatMap(result -> Flux.from(result.getRowsUpdated())).thenMany(Flux.fromIterable(e));
-                    });
+            if (hasGeneratedId) {
+                entities = entities.collectList()
+                        .flatMapMany(e -> {
+                            List<Data> notVetoedEntities = e.stream().filter(this::notVetoed).collect(Collectors.toList());
+                            if (notVetoedEntities.isEmpty()) {
+                                return Flux.fromIterable(notVetoedEntities);
+                            }
+                            Mono<List<Object>> ids = Flux.from(stmt.execute())
+                                    .flatMap(result ->
+                                            Flux.from(result.map((row, rowMetadata)
+                                                    -> columnIndexResultSetReader.readDynamic(row, 0, persistentEntity.getIdentity().getDataType())))
+                                    ).collectList();
+
+                            return ids.flatMapMany(idList -> {
+                                Iterator<Object> iterator = idList.iterator();
+                                ListIterator<Data> resultIterator = notVetoedEntities.listIterator();
+                                RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
+                                while (resultIterator.hasNext()) {
+                                    Data d = resultIterator.next();
+                                    if (!iterator.hasNext()) {
+                                        throw new DataAccessException("Failed to generate ID for entity: " + d.entity);
+                                    } else {
+                                        Object id = iterator.next();
+                                        d.entity = updateEntityId((BeanProperty<T, Object>) identity.getProperty(), d.entity, id);
+                                    }
+                                }
+                                return Flux.fromIterable(e);
+                            });
+                        });
+            } else {
+                entities = entities.collectList()
+                        .flatMapMany(e -> {
+                            List<Data> notVetoedEntities = e.stream().filter(this::notVetoed).collect(Collectors.toList());
+                            if (notVetoedEntities.isEmpty()) {
+                                return Flux.fromIterable(e);
+                            }
+                            // Remove in the future: unneeded call "getRowsUpdated" is required for some drivers
+                            return Flux.from(stmt.execute()).flatMap(result -> Flux.from(result.getRowsUpdated())).thenMany(Flux.fromIterable(e));
+                        });
+            }
         }
 
         @Override
@@ -1386,38 +1430,6 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                     }).cache();
             entities = entitiesWithRowsUpdated.flatMapMany(t -> Flux.fromIterable(t.getT1()));
             rowsUpdated = entitiesWithRowsUpdated.map(Tuple2::getT2);
-        }
-
-        @Override
-        protected void executeUpdateSetGeneratedId(Statement stmt) {
-            entities = entities.collectList()
-                    .flatMapMany(e -> {
-                        List<Data> notVetoedEntities = e.stream().filter(this::notVetoed).collect(Collectors.toList());
-                        if (notVetoedEntities.isEmpty()) {
-                            return Flux.fromIterable(notVetoedEntities);
-                        }
-                        Mono<List<Object>> ids = Flux.from(stmt.execute())
-                                .flatMap(result ->
-                                        Flux.from(result.map((row, rowMetadata)
-                                                -> columnIndexResultSetReader.readDynamic(row, 0, persistentEntity.getIdentity().getDataType())))
-                                ).collectList();
-
-                        return ids.flatMapMany(idList -> {
-                            Iterator<Object> iterator = idList.iterator();
-                            ListIterator<Data> resultIterator = notVetoedEntities.listIterator();
-                            RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
-                            while (resultIterator.hasNext()) {
-                                Data d = resultIterator.next();
-                                if (!iterator.hasNext()) {
-                                    throw new DataAccessException("Failed to generate ID for entity: " + d.entity);
-                                } else {
-                                    Object id = iterator.next();
-                                    d.entity = updateEntityId((BeanProperty<T, Object>) identity.getProperty(), d.entity, id);
-                                }
-                            }
-                            return Flux.fromIterable(e);
-                        });
-                    });
         }
 
         private boolean notVetoed(Data data) {
