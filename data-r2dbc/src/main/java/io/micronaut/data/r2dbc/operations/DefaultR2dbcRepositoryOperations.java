@@ -128,7 +128,6 @@ import java.util.stream.Stream;
 @Internal
 final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperations<Connection, Row, Statement, RuntimeException> implements BlockingReactorRepositoryOperations, R2dbcRepositoryOperations, R2dbcOperations, ReactiveTransactionOperations<Connection> {
     private static final Logger LOG = LoggerFactory.getLogger(DefaultR2dbcRepositoryOperations.class);
-    private static final AutoCloseable NOOP = () -> { };
     private final ConnectionFactory connectionFactory;
     private final ReactorReactiveRepositoryOperations reactiveOperations;
     private final String dataSourceName;
@@ -372,11 +371,6 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             return new ArgumentR2dbcCC(connection, argument);
         }
         return new R2dbcConversionContextImpl(connection);
-    }
-
-    @Override
-    protected AutoCloseable autoCloseable(Statement statement) {
-        return NOOP;
     }
 
     private Mono<Integer> sum(Stream<Mono<Integer>> stream) {
@@ -1114,8 +1108,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             });
         }
 
-        @Override
-        protected Statement prepare(Connection connection, DBOperation sqlOperation) throws RuntimeException {
+        private Statement prepare(Connection connection, DBOperation sqlOperation) throws RuntimeException {
             if (StoredSqlOperation.class.isInstance(sqlOperation)) {
                 data = data.map(d -> {
                     if (d.vetoed) {
@@ -1132,8 +1125,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             return statement;
         }
 
-        @Override
-        protected void setParameters(OpContext<Connection, Statement> context, Connection connection, Statement stmt, DBOperation sqlOperation) {
+        private void setParameters(OpContext<Connection, Statement> context, Connection connection, Statement stmt, DBOperation sqlOperation) {
             data = data.map(d -> {
                 if (d.vetoed) {
                     return d;
@@ -1144,28 +1136,16 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
         }
 
         @Override
-        protected void executeUpdate(Statement stmt, DBOperation2<Integer, Integer, RuntimeException> fn) {
-            data = data.flatMap(d -> Flux.from(stmt.execute()).flatMap(result -> Flux.from(result.getRowsUpdated()))
-                    .as(DefaultR2dbcRepositoryOperations::toSingleResult)
-                    .map(rowsUpdated -> {
-                        if (d.vetoed) {
-                            return d;
-                        }
-                        d.rowsUpdated = rowsUpdated;
-                        fn.process(1, rowsUpdated);
-                        return d;
-                    }));
-        }
-
-        @Override
-        protected void executeUpdate(Statement stmt) throws RuntimeException {
+        protected void executeUpdate(OpContext<Connection, Statement> context, Connection connection, DBOperation dbOperation) throws RuntimeException {
+            Statement statement = prepare(connection, dbOperation);
+            setParameters(context, connection, statement, dbOperation);
             if (hasGeneratedId) {
                 data = data.flatMap(d -> {
                     if (d.vetoed) {
                         return Mono.just(d);
                     }
                     RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
-                    return Flux.from(stmt.execute()).flatMap(result ->
+                    return Flux.from(statement.execute()).flatMap(result ->
                                     Flux.from(result.map((row, rowMetadata) ->
                                             columnIndexResultSetReader.readDynamic(row, 0, identity.getDataType()))))
                             .as(DefaultR2dbcRepositoryOperations::toSingleResult).map(id -> {
@@ -1179,12 +1159,28 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                     if (d.vetoed) {
                         return Mono.just(d);
                     }
-                    return Flux.from(stmt.execute()).flatMap(r -> Flux.from(r.getRowsUpdated()))
+                    return Flux.from(statement.execute()).flatMap(r -> Flux.from(r.getRowsUpdated()))
                             // Remove in the future: unneeded call "getRowsUpdated" is required for some drivers
                             .as(DefaultR2dbcRepositoryOperations::toSingleResult)
                             .thenReturn(d);
                 });
             }
+        }
+
+        @Override
+        protected void executeUpdate(OpContext<Connection, Statement> context, Connection connection, DBOperation dbOperation, DBOperation2<Integer, Integer, RuntimeException> fn) throws RuntimeException {
+            Statement statement = prepare(connection, dbOperation);
+            setParameters(context, connection, statement, dbOperation);
+            data = data.flatMap(d -> Flux.from(statement.execute()).flatMap(result -> Flux.from(result.getRowsUpdated()))
+                    .as(DefaultR2dbcRepositoryOperations::toSingleResult)
+                    .map(rowsUpdated -> {
+                        if (d.vetoed) {
+                            return d;
+                        }
+                        d.rowsUpdated = rowsUpdated;
+                        fn.process(1, rowsUpdated);
+                        return d;
+                    }));
         }
 
         @Override
@@ -1281,8 +1277,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             });
         }
 
-        @Override
-        protected Statement prepare(Connection connection, DBOperation dbOperation) throws RuntimeException {
+        private Statement prepare(Connection connection, DBOperation dbOperation) throws RuntimeException {
             Statement statement = connection.createStatement(dbOperation.getQuery());
             if (hasGeneratedId) {
                 return statement.returnGeneratedValues(persistentEntity.getIdentity().getPersistedName());
@@ -1358,8 +1353,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             });
         }
 
-        @Override
-        protected void setParameters(OpContext<Connection, Statement> context, Connection connection, Statement stmt, DBOperation dbOperation) {
+        private void setParameters(OpContext<Connection, Statement> context, Connection connection, Statement stmt, DBOperation dbOperation) {
             entities = entities.map(d -> {
                 if (d.vetoed) {
                     return d;
@@ -1371,7 +1365,9 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
         }
 
         @Override
-        protected void executeUpdate(Statement stmt) {
+        protected void executeUpdate(OpContext<Connection, Statement> context, Connection connection, DBOperation dbOperation) throws RuntimeException {
+            Statement statement = prepare(connection, dbOperation);
+            setParameters(context, connection, statement, dbOperation);
             if (hasGeneratedId) {
                 entities = entities.collectList()
                         .flatMapMany(e -> {
@@ -1379,7 +1375,7 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                             if (notVetoedEntities.isEmpty()) {
                                 return Flux.fromIterable(notVetoedEntities);
                             }
-                            Mono<List<Object>> ids = Flux.from(stmt.execute())
+                            Mono<List<Object>> ids = Flux.from(statement.execute())
                                     .flatMap(result ->
                                             Flux.from(result.map((row, rowMetadata)
                                                     -> columnIndexResultSetReader.readDynamic(row, 0, persistentEntity.getIdentity().getDataType())))
@@ -1409,20 +1405,22 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
                                 return Flux.fromIterable(e);
                             }
                             // Remove in the future: unneeded call "getRowsUpdated" is required for some drivers
-                            return Flux.from(stmt.execute()).flatMap(result -> Flux.from(result.getRowsUpdated())).thenMany(Flux.fromIterable(e));
+                            return Flux.from(statement.execute()).flatMap(result -> Flux.from(result.getRowsUpdated())).thenMany(Flux.fromIterable(e));
                         });
             }
         }
 
         @Override
-        protected void executeUpdate(Statement stmt, DBOperation2<Integer, Integer, RuntimeException> fn) {
+        protected void executeUpdate(OpContext<Connection, Statement> context, Connection connection, DBOperation dbOperation, DBOperation2<Integer, Integer, RuntimeException> fn) throws RuntimeException {
+            Statement statement = prepare(connection, dbOperation);
+            setParameters(context, connection, statement, dbOperation);
             Mono<Tuple2<List<Data>, Integer>> entitiesWithRowsUpdated = entities.collectList()
                     .flatMap(e -> {
                         List<Data> notVetoedEntities = e.stream().filter(this::notVetoed).collect(Collectors.toList());
                         if (notVetoedEntities.isEmpty()) {
                             return Mono.just(Tuples.of(e, 0));
                         }
-                        return Flux.from(stmt.execute()).flatMap(result -> Flux.from(result.getRowsUpdated())).reduce(0, Integer::sum)
+                        return Flux.from(statement.execute()).flatMap(result -> Flux.from(result.getRowsUpdated())).reduce(0, Integer::sum)
                                 .map(rowsUpdated -> {
                                     fn.process(notVetoedEntities.size(), rowsUpdated);
                                     return Tuples.of(e, rowsUpdated);
