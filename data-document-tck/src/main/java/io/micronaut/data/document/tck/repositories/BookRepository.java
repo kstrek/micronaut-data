@@ -27,6 +27,19 @@ public abstract class BookRepository implements PageableRepository<Book, String>
 
     public abstract int deleteByIdAndAuthorId(String id, String authorId);
 
+    public abstract List<Book> findByAuthorIsNull();
+    public abstract List<Book> findByAuthorIsNotNull();
+    public abstract int countByTitleIsEmpty();
+    public abstract int countByTitleIsNotEmpty();
+
+    public abstract void deleteByTitleIsEmptyOrTitleIsNull();
+
+    public abstract List<Book> findTop3OrderByTitle();
+
+//    public abstract Stream<Book> findTop3ByAuthorNameOrderByTitle(String name);
+//
+//    public abstract List<Book> queryTop3ByAuthorNameOrderByTitle(String name);
+
     public void saveAuthorBooks(List<AuthorBooksDto> authorBooksDtos) {
         List<Author> authors = new ArrayList<>();
         for (AuthorBooksDto dto: authorBooksDtos) {

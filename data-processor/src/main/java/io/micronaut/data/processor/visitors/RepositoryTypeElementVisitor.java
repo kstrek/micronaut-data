@@ -337,7 +337,11 @@ public class RepositoryTypeElementVisitor implements TypeElementVisitor<Reposito
                                 annotationBuilder.value(queryResult.getQuery());
                                 String update = queryResult.getUpdate();
                                 if (StringUtils.isNotEmpty(update)) {
-                                    annotationBuilder.member("update", queryResult.getUpdate());
+                                    annotationBuilder.member("update", update);
+                                }
+                                String sort = queryResult.getSort();
+                                if (StringUtils.isNotEmpty(sort)) {
+                                    annotationBuilder.member("sort", sort);
                                 }
                             }
                     );

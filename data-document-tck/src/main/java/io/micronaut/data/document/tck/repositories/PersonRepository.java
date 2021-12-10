@@ -34,4 +34,12 @@ public interface PersonRepository extends CrudRepository<Person, String> {
 
     Long deleteByNameRegex(String name);
 
+    long updatePersonCount(@Id String id, @Parameter("name") String name);
+
+    int countByAgeGreaterThan(Integer wrapper);
+
+    int countByAgeLessThan(int wrapper);
+
+    int findAgeByName(String name);
+
 }

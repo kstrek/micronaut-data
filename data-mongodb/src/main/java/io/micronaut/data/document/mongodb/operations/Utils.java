@@ -8,6 +8,7 @@ import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.RuntimePersistentProperty;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
+import org.bson.BsonNull;
 import org.bson.BsonObjectId;
 import org.bson.BsonString;
 import org.bson.BsonType;
@@ -42,6 +43,9 @@ final class Utils {
     }
 
     static BsonValue toBsonValue(ConversionService<?> conversionService, Object value) {
+        if (value == null) {
+            return BsonNull.VALUE;
+        }
         if (value instanceof String) {
             return new BsonString((String) value);
         }

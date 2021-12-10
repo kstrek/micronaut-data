@@ -222,16 +222,18 @@ class MongoCriteriaSpec extends Specification {
             predicateQuery == expectedWhereQuery
 
         where:
-            property   | predicate   | expectedWhereQuery
-            "enabled"  | "isTrue"    | '{enabled:{$eq:true}}'
-            "enabled2" | "isTrue"    | '{enabled2:{$eq:true}}'
-            "enabled"  | "isFalse"   | '{enabled:{$eq:false}}'
-            "enabled2" | "isFalse"   | '{enabled2:{$eq:false}}'
-            "enabled"  | "isNull"    | '{enabled:{$eq:null}}'
-            "enabled2" | "isNull"    | '{enabled2:{$eq:null}}'
-            "enabled"  | "isNotNull" | '{enabled:{$ne:null}}'
-            "enabled2" | "isNotNull" | '{enabled2:{$ne:null}}'
-            "name"     | "isNotNull" | '{name:{$ne:null}}'
+            property   | predicate          | expectedWhereQuery
+            "enabled"  | "isTrue"           | '{enabled:{$eq:true}}'
+            "enabled2" | "isTrue"           | '{enabled2:{$eq:true}}'
+            "enabled"  | "isFalse"          | '{enabled:{$eq:false}}'
+            "enabled2" | "isFalse"          | '{enabled2:{$eq:false}}'
+            "enabled"  | "isNull"           | '{enabled:{$eq:null}}'
+            "enabled2" | "isNull"           | '{enabled2:{$eq:null}}'
+            "enabled"  | "isNotNull"        | '{enabled:{$ne:null}}'
+            "enabled2" | "isNotNull"        | '{enabled2:{$ne:null}}'
+            "name"     | "isNotNull"        | '{name:{$ne:null}}'
+            "name"     | "isEmptyString"    | '''{$or:[{name:{$eq:''}},{name:{$exists:false}}]}'''
+            "name"     | "isNotEmptyString" | '''{$and:[{name:{$ne:''}},{name:{$exists:true}}]}'''
     }
 
     @Unroll

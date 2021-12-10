@@ -1,10 +1,12 @@
 package io.micronaut.data.document.mongodb
 
 import groovy.transform.Memoized
+import io.micronaut.data.document.mongodb.repositories.MongoAuthorRepository
 import io.micronaut.data.document.mongodb.repositories.MongoBasicTypesRepository
 import io.micronaut.data.document.mongodb.repositories.MongoBookRepository
 import io.micronaut.data.document.mongodb.repositories.MongoPersonRepository
 import io.micronaut.data.document.tck.AbstractDocumentRepositorySpec
+import io.micronaut.data.document.tck.repositories.AuthorRepository
 import io.micronaut.data.document.tck.repositories.BasicTypesRepository
 import io.micronaut.data.document.tck.repositories.BookRepository
 import io.micronaut.data.document.tck.repositories.PersonRepository
@@ -27,5 +29,11 @@ class MongoDocumentRepositorySpec extends AbstractDocumentRepositorySpec impleme
     @Override
     BookRepository getBookRepository() {
         return context.getBean(MongoBookRepository)
+    }
+
+    @Memoized
+    @Override
+    AuthorRepository getAuthorRepository() {
+        return context.getBean(MongoAuthorRepository)
     }
 }

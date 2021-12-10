@@ -6,6 +6,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.UnwindOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
@@ -134,7 +135,8 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             }
             return getCollection(persistentEntity, resultType)
                     .find(clientSession, filter, resultType)
-                    .limit(1).first();
+                    .limit(1)
+                    .first();
         }
     }
 
@@ -341,6 +343,9 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     @Override
     public <T, R> Iterable<R> findAll(PreparedQuery<T, R> preparedQuery) {
         try (ClientSession clientSession = mongoClient.startSession()) {
+            Bson sort = preparedQuery.getAnnotationMetadata().stringValue(Query.class, "sort")
+                    .map(BsonDocument::parse)
+                    .orElse(null);
             Pageable pageable = preparedQuery.getPageable();
             int skip = 0;
             int limit = 0;
@@ -348,9 +353,11 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             if (pageable != Pageable.UNPAGED) {
                 skip = (int) pageable.getOffset();
                 limit = pageable.getSize();
-                Sort sort = pageable.getSort();
-                if (sort.isSorted()) {
-//                    query += queryBuilder.buildOrderBy(persistentEntity, sort).getQuery();
+                Sort pageableSort = pageable.getSort();
+                if (pageableSort.isSorted() ) {
+                    sort = pageableSort.getOrderBy().stream()
+                            .map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty()))
+                            .collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
                 }
                 if (isSingleResult && pageable.getOffset() > 0) {
                     pageable = Pageable.from(pageable.getNumber(), 1);
@@ -413,6 +420,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                         .find(clientSession, filter, resultType)
                         .skip(skip)
                         .limit(limit)
+                        .sort(sort)
                         .spliterator();
                 return StreamSupport.stream(spliterator, false).collect(Collectors.toList());
             }
