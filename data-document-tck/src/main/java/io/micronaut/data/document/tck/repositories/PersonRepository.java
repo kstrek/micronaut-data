@@ -2,6 +2,7 @@ package io.micronaut.data.document.tck.repositories;
 
 import io.micronaut.context.annotation.Parameter;
 import io.micronaut.core.annotation.Nullable;
+import io.micronaut.data.annotation.Id;
 import io.micronaut.data.document.tck.entities.Person;
 import io.micronaut.data.model.Pageable;
 import io.micronaut.data.repository.CrudRepository;
@@ -24,4 +25,13 @@ public interface PersonRepository extends CrudRepository<Person, String> {
 
     @Nullable
     Person findByName(String name);
+
+    void updatePerson(@Id String id, @Parameter("name") String name);
+
+    long updateByName(String name, int age);
+
+    List<Person> findByNameRegex(String name);
+
+    Long deleteByNameRegex(String name);
+
 }

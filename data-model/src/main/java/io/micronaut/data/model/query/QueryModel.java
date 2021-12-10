@@ -1193,6 +1193,20 @@ public interface QueryModel extends Criteria {
     }
 
     /**
+     * Criterion used to restrict the results based on a regex pattern.
+     */
+    class Regex extends PropertyCriterion {
+        /**
+         * Default constructor.
+         * @param name The property name
+         * @param expression The parameter
+         */
+        public Regex(String name, Object expression) {
+            super(name, expression);
+        }
+    }
+
+    /**
      * Criterion used to restrict the results based on starting with a given value.
      */
     class StartsWith extends PropertyCriterion {

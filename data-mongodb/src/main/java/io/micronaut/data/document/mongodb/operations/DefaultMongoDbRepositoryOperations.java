@@ -113,8 +113,11 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     public <T> T findOne(Class<T> type, Serializable id) {
         try (ClientSession clientSession = mongoClient.startSession()) {
             RuntimePersistentEntity<T> persistentEntity = runtimeEntityRegistry.getEntity(type);
-            Bson eq = Utils.filterById(conversionService, persistentEntity, id);
-            return getCollection(persistentEntity, type).find(clientSession, eq, type).first();
+            Bson filter = Utils.filterById(conversionService, persistentEntity, id);
+            if (QUERY_LOG.isDebugEnabled()) {
+                QUERY_LOG.debug("Executing Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
+            }
+            return getCollection(persistentEntity, type).find(clientSession, filter, type).first();
         }
     }
 
@@ -125,6 +128,9 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             Class<R> resultType = preparedQuery.getResultType();
             RuntimePersistentEntity<T> persistentEntity = runtimeEntityRegistry.getEntity(type);
             Bson filter = getFilter(preparedQuery, persistentEntity);
+            if (QUERY_LOG.isDebugEnabled()) {
+                QUERY_LOG.debug("Executing exists Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
+            }
             return getCollection(persistentEntity, resultType)
                     .find(clientSession, filter, resultType)
                     .limit(1).first();
@@ -137,6 +143,9 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         RuntimePersistentEntity<T> persistentEntity = runtimeEntityRegistry.getEntity(type);
         Bson filter = getFilter(preparedQuery, persistentEntity);
         try (ClientSession clientSession = mongoClient.startSession()) {
+            if (QUERY_LOG.isDebugEnabled()) {
+                QUERY_LOG.debug("Executing exists Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
+            }
             return getCollection(persistentEntity, persistentEntity.getIntrospection().getBeanType())
                     .find(clientSession, type)
                     .limit(1)
@@ -388,6 +397,9 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 }
             }
             if (pipeline.isEmpty()) {
+                if (QUERY_LOG.isDebugEnabled()) {
+                    QUERY_LOG.debug("Executing Mongo 'find' with filter: {} skip: {} limit: {}", filter.toBsonDocument().toJson(), skip, limit);
+                }
                 Spliterator<R> spliterator = getCollection(persistentEntity, resultType)
                         .find(clientSession, filter, resultType)
                         .skip(skip)

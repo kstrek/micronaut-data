@@ -33,6 +33,8 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 public class MongoDbQueryBuilder implements QueryBuilder {
 
@@ -52,7 +54,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         addCriterionHandler(QueryModel.IsTrue.class, (context, sb, criterion) -> handleCriterion(context, sb, new QueryModel.Equals(criterion.getProperty(), true)));
         addCriterionHandler(QueryModel.IsFalse.class, (context, sb, criterion) -> handleCriterion(context, sb, new QueryModel.Equals(criterion.getProperty(), false)));
         addCriterionHandler(QueryModel.Equals.class, propertyOperatorExpression("$eq"));
-        addCriterionHandler(QueryModel.IdEquals.class, (context, sb, criterion) ->  handleCriterion(context, sb, new QueryModel.Equals("id", criterion.getValue())));
+        addCriterionHandler(QueryModel.IdEquals.class, (context, sb, criterion) -> handleCriterion(context, sb, new QueryModel.Equals("id", criterion.getValue())));
         addCriterionHandler(QueryModel.NotEquals.class, propertyOperatorExpression("$ne"));
         addCriterionHandler(QueryModel.GreaterThan.class, propertyOperatorExpression("$gt"));
         addCriterionHandler(QueryModel.GreaterThanEquals.class, propertyOperatorExpression("$gte"));
@@ -73,11 +75,24 @@ public class MongoDbQueryBuilder implements QueryBuilder {
             conjunction.add(new QueryModel.LessThanEquals(criterion.getProperty(), criterion.getTo()));
             handleCriterion(context, sb, conjunction);
         });
+        addCriterionHandler(QueryModel.Regex.class, propertyOperatorExpression("$regex", value -> {
+            if (value instanceof BindingParameter) {
+                return value;
+            }
+            return new RegexPattern(value.toString());
+        }));
     }
 
     private <T extends QueryModel.PropertyCriterion> CriterionHandler<T> propertyOperatorExpression(String op) {
+        return propertyOperatorExpression(op, null);
+    }
+
+    private <T extends QueryModel.PropertyCriterion> CriterionHandler<T> propertyOperatorExpression(String op, Function<Object, Object> mapper) {
         return (context, sb, criterion) -> {
             Object value = criterion.getValue();
+            if (mapper != null) {
+                value = mapper.apply(value);
+            }
             QueryPropertyPath propertyPath = context.getRequiredProperty(criterion);
             String propertyName = propertyPath.getProperty().getAnnotationMetadata()
                     .stringValue(SerdeConfig.class, SerdeConfig.PROPERTY)
@@ -86,15 +101,16 @@ public class MongoDbQueryBuilder implements QueryBuilder {
             propertyPath.getAssociations().forEach(a -> sj.add(a.getName()));
             sj.add(propertyName);
             String path = sj.toString();
+            Object finalValue = value;
             appendPropertyExp(sb, op, path, () -> {
-                if (value instanceof BindingParameter) {
+                if (finalValue instanceof BindingParameter) {
                     int index = context.pushParameter(
-                            (BindingParameter) value,
+                            (BindingParameter) finalValue,
                             newBindingContext(propertyPath.propertyPath)
                     );
                     appendQueryParameterAtIndex(sb, index);
                 } else {
-                    sb.append(asLiteral(value));
+                    sb.append(asLiteral(finalValue));
                 }
             });
         };
@@ -114,6 +130,9 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     protected String asLiteral(@Nullable Object value) {
         if (value == null) {
             return "null";
+        }
+        if (value instanceof RegexPattern) {
+            return "'" + Pattern.quote(((RegexPattern) value).value) + "'";
         }
         if (value instanceof Number) {
             return Long.toString(((Number) value).longValue());
@@ -590,7 +609,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     private interface PropertyParameterCreator {
 
         int pushParameter(@NotNull BindingParameter bindingParameter,
-                           @NotNull BindingParameter.BindingContext bindingContext);
+                          @NotNull BindingParameter.BindingContext bindingContext);
 
     }
 
@@ -702,5 +721,13 @@ public class MongoDbQueryBuilder implements QueryBuilder {
             return propertyPath.getNamingStrategy();
         }
 
+    }
+
+    private static class RegexPattern {
+        private final String value;
+
+        private RegexPattern(String value) {
+            this.value = value;
+        }
     }
 }

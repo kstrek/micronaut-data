@@ -210,7 +210,7 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
             savePersons(["Jeff", "James"])
 
         when:"A search for some people"
-            def people = personRepository.findByNameLike("J%")
+            def people = personRepository.findByNameRegex(/^J/)
 
         then:
             people.size() == 2
@@ -278,7 +278,7 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
 
     void "test delete all"() {
         given:
-            int personsWithG = personRepository.findByNameLike("G%").size()
+            int personsWithG = personRepository.findByNameRegex("/^G/").size()
 
         when:"A new person is saved"
             personRepository.save("Greg", 30)
@@ -288,7 +288,7 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
             old(personRepository.count()) + 2 == personRepository.count()
 
         when:"batch delete occurs"
-            def deleted = personRepository.deleteByNameLike("G%")
+            def deleted = personRepository.deleteByNameRegex(/^G/)
 
         then:"The count is back to 1 and it entries were deleted"
             deleted == personsWithG + 2
