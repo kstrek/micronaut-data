@@ -6,6 +6,8 @@ import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.convert.ConversionService;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.RuntimePersistentProperty;
+import org.bson.BsonInt32;
+import org.bson.BsonInt64;
 import org.bson.BsonObjectId;
 import org.bson.BsonString;
 import org.bson.BsonType;
@@ -41,7 +43,16 @@ final class Utils {
 
     static BsonValue toBsonValue(ConversionService<?> conversionService, Object value) {
         if (value instanceof String) {
-            return toBsonValue(conversionService, BsonType.STRING, value);
+            return new BsonString((String) value);
+        }
+        if (value instanceof Integer) {
+            return new BsonInt32((Integer) value);
+        }
+        if (value instanceof Long) {
+            return new BsonInt64((Long) value);
+        }
+        if (value instanceof ObjectId) {
+            return new BsonObjectId((ObjectId) value);
         }
         throw new IllegalStateException("Not implemented for: " + value);
     }

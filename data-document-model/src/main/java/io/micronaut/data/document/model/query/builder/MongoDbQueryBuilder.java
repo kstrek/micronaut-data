@@ -23,6 +23,8 @@ import io.micronaut.serde.config.annotation.SerdeConfig;
 
 import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -32,7 +34,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -41,11 +42,13 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     protected final Map<Class, CriterionHandler> queryHandlers = new HashMap<>(30);
 
     {
-        addCriterionHandler(QueryModel.Negation.class, (ctx, sb, negation) -> {
+        addCriterionHandler(QueryModel.Negation.class, (ctx, obj, negation) -> {
+            Map<String, Object> neg = new LinkedHashMap<>();
+            obj.put("$not", neg);
             if (negation.getCriteria().size() == 1) {
-                append(sb, "$not", sb2 -> handleJunction(ctx, sb2, negation, "$or"));
+                handleJunction(ctx, neg, negation, "$or");
             } else {
-                append(sb, "$not", sb2 -> handleCriterion(ctx, sb2, negation.getCriteria().iterator().next()));
+                handleCriterion(ctx, neg, negation.getCriteria().iterator().next());
             }
         });
 
@@ -88,7 +91,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     }
 
     private <T extends QueryModel.PropertyCriterion> CriterionHandler<T> propertyOperatorExpression(String op, Function<Object, Object> mapper) {
-        return (context, sb, criterion) -> {
+        return (context, obj, criterion) -> {
             Object value = criterion.getValue();
             if (mapper != null) {
                 value = mapper.apply(value);
@@ -101,29 +104,27 @@ public class MongoDbQueryBuilder implements QueryBuilder {
             propertyPath.getAssociations().forEach(a -> sj.add(a.getName()));
             sj.add(propertyName);
             String path = sj.toString();
-            Object finalValue = value;
-            appendPropertyExp(sb, op, path, () -> {
-                if (finalValue instanceof BindingParameter) {
-                    int index = context.pushParameter(
-                            (BindingParameter) finalValue,
-                            newBindingContext(propertyPath.propertyPath)
-                    );
-                    appendQueryParameterAtIndex(sb, index);
-                } else {
-                    sb.append(asLiteral(finalValue));
-                }
-            });
+            if (value instanceof BindingParameter) {
+                int index = context.pushParameter(
+                        (BindingParameter) value,
+                        newBindingContext(propertyPath.propertyPath)
+                );
+                obj.put(path, Collections.singletonMap(op, Collections.singletonMap("$qpidx", index)));
+            } else {
+                obj.put(path, Collections.singletonMap(op, asLiteral(value)));
+            }
         };
     }
 
     private <T extends QueryModel.PropertyComparisonCriterion> CriterionHandler<T> comparison(String operator) {
-        return (ctx, sb, comparisonCriterion) -> {
+        return (ctx, obj, comparisonCriterion) -> {
             QueryPropertyPath p1 = ctx.getRequiredProperty(comparisonCriterion.getProperty(), comparisonCriterion.getClass());
             QueryPropertyPath p2 = ctx.getRequiredProperty(comparisonCriterion.getOtherProperty(), comparisonCriterion.getClass());
-
-            appendPropertyExp(sb, operator, "$expr", () -> {
-                sb.append("[").append("\"$").append(p1.getPath()).append('"').append(", ").append("\"$").append(p2.getPath()).append('"').append("]");
-            });
+            obj.put("$expr", Collections.singletonMap(
+                    operator, Arrays.asList(
+                            "$" + p1.getPath(), "$" + p2.getPath()
+                    )
+            ));
         };
     }
 
@@ -134,35 +135,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         if (value instanceof RegexPattern) {
             return "'" + Pattern.quote(((RegexPattern) value).value) + "'";
         }
-        if (value instanceof Number) {
-            return Long.toString(((Number) value).longValue());
-        }
-        if (value instanceof Boolean) {
-            return value.toString().toLowerCase(Locale.ROOT);
-        }
-        return "'" + value + "'";
-    }
-
-    private void appendQueryParameterAtIndex(StringBuilder sb, int index) {
-        sb.append("{ $qpidx: ").append(index)
-                .append(" }");
-    }
-
-    private void append(StringBuilder sb, String property, Consumer<StringBuilder> consumer) {
-        sb.append("{ ");
-        sb.append(property).append(": ");
-        consumer.accept(sb);
-        sb.append(" }");
-    }
-
-    private void appendPropertyExp(StringBuilder sb, String operator, String property, Runnable placeholder) {
-        sb.append("{ '");
-        sb.append(property).append("': ");
-        sb.append("{ ");
-        sb.append(operator).append(": ");
-        placeholder.run();
-        sb.append(" }");
-        sb.append(" }");
+        return value.toString();
     }
 
     @Override
@@ -179,13 +152,15 @@ public class MongoDbQueryBuilder implements QueryBuilder {
 
         QueryModel.Junction criteria = query.getCriteria();
 
+        String predicateQuery = "";
         if (!criteria.isEmpty()) {
-            buildWhereClause(annotationMetadata, criteria, queryState);
+            Map<String, Object> predicate = buildWhereClause(annotationMetadata, criteria, queryState);
+            predicateQuery = toJsonString(predicate);
         }
 
         return QueryResult.of(
-                queryState.getFinalQuery(),
-                queryState.getQueryParts(),
+                predicateQuery,
+                Collections.emptyList(),
                 queryState.getParameterBindings(),
                 queryState.getAdditionalRequiredParameters(),
                 query.getMax(),
@@ -193,35 +168,34 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         );
     }
 
-    private void buildWhereClause(AnnotationMetadata annotationMetadata, QueryModel.Junction criteria, QueryState queryState) {
-        if (!criteria.isEmpty()) {
+    private Map<String, Object> buildWhereClause(AnnotationMetadata annotationMetadata, QueryModel.Junction criteria, QueryState queryState) {
+        CriteriaContext ctx = new CriteriaContext() {
 
-            CriteriaContext ctx = new CriteriaContext() {
+            @Override
+            public String getCurrentTableAlias() {
+                return queryState.getRootAlias();
+            }
 
-                @Override
-                public String getCurrentTableAlias() {
-                    return queryState.getRootAlias();
-                }
+            @Override
+            public QueryState getQueryState() {
+                return queryState;
+            }
 
-                @Override
-                public QueryState getQueryState() {
-                    return queryState;
-                }
+            @Override
+            public PersistentEntity getPersistentEntity() {
+                return queryState.getEntity();
+            }
 
-                @Override
-                public PersistentEntity getPersistentEntity() {
-                    return queryState.getEntity();
-                }
+            @Override
+            public QueryPropertyPath getRequiredProperty(String name, Class<?> criterionClazz) {
+                return findProperty(queryState, name, criterionClazz);
+            }
 
-                @Override
-                public QueryPropertyPath getRequiredProperty(String name, Class<?> criterionClazz) {
-                    return findProperty(queryState, name, criterionClazz);
-                }
+        };
 
-            };
-
-            handleCriterion(ctx, queryState.query, criteria);
-        }
+        Map<String, Object> obj = new LinkedHashMap<>();
+        handleCriterion(ctx, obj, criteria);
+        return obj;
     }
 
     @NonNull
@@ -298,41 +272,95 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         return new QueryPropertyPath(propertyPath, tableAlias);
     }
 
-    private void handleJunction(CriteriaContext ctx, StringBuilder sb, QueryModel.Junction criteria, String operator) {
+    private void handleJunction(CriteriaContext ctx, Map<String, Object> query, QueryModel.Junction criteria, String operator) {
         if (criteria.getCriteria().size() == 1) {
-            handleCriterion(ctx, sb, criteria.getCriteria().iterator().next());
+            handleCriterion(ctx, query, criteria.getCriteria().iterator().next());
         } else {
-            sb.append("{ ");
-            sb.append(operator).append(": ");
-            Iterator<QueryModel.Criterion> iterator = criteria.getCriteria().iterator();
-            sb.append("[ ");
-            while (iterator.hasNext()) {
-                handleCriterion(ctx, sb, iterator.next());
-                if (iterator.hasNext()) {
-                    sb.append(", ");
-                }
+            List<Object> ops = new ArrayList<>(criteria.getCriteria().size());
+            query.put(operator, ops);
+            for (QueryModel.Criterion criterion : criteria.getCriteria()) {
+                Map<String, Object> criterionObj = new LinkedHashMap<>();
+                ops.add(criterionObj);
+                handleCriterion(ctx, criterionObj, criterion);
             }
-            sb.append(" ]");
-            sb.append(" }");
         }
     }
 
-    private void handleCriterion(CriteriaContext ctx, StringBuilder sb, QueryModel.Criterion criterion) {
+    private void handleCriterion(CriteriaContext ctx, Map<String, Object> query, QueryModel.Criterion criterion) {
         CriterionHandler<QueryModel.Criterion> criterionHandler = queryHandlers.get(criterion.getClass());
         if (criterionHandler == null) {
             throw new IllegalArgumentException("Queries of type " + criterion.getClass().getSimpleName() + " are not supported by this implementation");
         }
-        criterionHandler.handle(ctx, sb, criterion);
+        criterionHandler.handle(ctx, query, criterion);
     }
 
     @Override
     public QueryResult buildUpdate(AnnotationMetadata annotationMetadata, QueryModel query, List<String> propertiesToUpdate) {
-        return null;
+        throw new IllegalStateException("Not supported!");
     }
 
     @Override
     public QueryResult buildUpdate(AnnotationMetadata annotationMetadata, QueryModel query, Map<String, Object> propertiesToUpdate) {
-        return null;
+        ArgumentUtils.requireNonNull("annotationMetadata", annotationMetadata);
+        ArgumentUtils.requireNonNull("query", query);
+        ArgumentUtils.requireNonNull("propertiesToUpdate", propertiesToUpdate);
+
+        QueryState queryState = new QueryState(query, true, false);
+
+        QueryModel.Junction criteria = query.getCriteria();
+
+        String predicateQuery = "";
+        if (!criteria.isEmpty()) {
+            Map<String, Object> predicate = buildWhereClause(annotationMetadata, criteria, queryState);
+            predicateQuery = toJsonString(predicate);
+        }
+
+        Map<String, Object> sets = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : propertiesToUpdate.entrySet()) {
+            if (e.getValue() instanceof BindingParameter) {
+                QueryPropertyPath property = findProperty(queryState, e.getKey(), null);
+                int index = queryState.pushParameter(
+                        (BindingParameter) e.getValue(),
+                        newBindingContext(property.propertyPath)
+                );
+                sets.put(e.getKey(), Collections.singletonMap("$qpidx", index));
+            } else {
+                sets.put(e.getKey(), e.getValue());
+            }
+        }
+
+        String update = toJsonString(Collections.singletonMap("$set", sets));
+
+        String finalPredicateQuery = predicateQuery;
+        return new QueryResult() {
+
+            @NonNull
+            @Override
+            public String getQuery() {
+                return finalPredicateQuery;
+            }
+
+            @Override
+            public String getUpdate() {
+                return update;
+            }
+
+            @Override
+            public List<String> getQueryParts() {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public List<QueryParameterBinding> getParameterBindings() {
+                return queryState.getParameterBindings();
+            }
+
+            @Override
+            public Map<String, String> getAdditionalRequiredParameters() {
+                return Collections.emptyMap();
+            }
+
+        };
     }
 
     @Override
@@ -344,13 +372,15 @@ public class MongoDbQueryBuilder implements QueryBuilder {
 
         QueryModel.Junction criteria = query.getCriteria();
 
+        String predicateQuery = "";
         if (!criteria.isEmpty()) {
-            buildWhereClause(annotationMetadata, criteria, queryState);
+            Map<String, Object> predicate = buildWhereClause(annotationMetadata, criteria, queryState);
+            predicateQuery = toJsonString(predicate);
         }
 
         return QueryResult.of(
-                queryState.getFinalQuery(),
-                queryState.getQueryParts(),
+                predicateQuery,
+                Collections.emptyList(),
                 queryState.getParameterBindings(),
                 queryState.getAdditionalRequiredParameters(),
                 query.getMax(),
@@ -366,6 +396,72 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     @Override
     public QueryResult buildPagination(Pageable pageable) {
         return null;
+    }
+
+    private String toJsonString(Object obj) {
+        StringBuilder sb = new StringBuilder();
+        append(sb, obj);
+        return sb.toString();
+    }
+
+    private void appendMap(StringBuilder sb, Map<String, Object> map) {
+        sb.append("{");
+        for (Iterator<Map.Entry<String, Object>> iterator = map.entrySet().iterator(); iterator.hasNext(); ) {
+            Map.Entry<String, Object> e = iterator.next();
+            String key = e.getKey();
+            if (shouldEscapeKey(key)) {
+                sb.append("'").append(key).append("'");
+            } else {
+                sb.append(key);
+            }
+            sb.append(":");
+            append(sb, e.getValue());
+            if (iterator.hasNext()) {
+                sb.append(",");
+            }
+        }
+        sb.append("}");
+    }
+
+    private void appendArray(StringBuilder sb, Collection<Object> collection) {
+        sb.append("[");
+        for (Iterator<Object> iterator = collection.iterator(); iterator.hasNext(); ) {
+            Object value = iterator.next();
+            append(sb, value);
+            if (iterator.hasNext()) {
+                sb.append(",");
+            }
+        }
+        sb.append("]");
+    }
+
+    private void append(StringBuilder sb, Object obj) {
+        if (obj instanceof Map) {
+            appendMap(sb, (Map) obj);
+        } else if (obj instanceof Collection) {
+            appendArray(sb, (Collection<Object>) obj);
+        } else if (obj == null) {
+            sb.append("null");
+        } else if (obj instanceof Boolean) {
+            sb.append(obj.toString().toLowerCase(Locale.ROOT));
+        } else if (obj instanceof Number) {
+            sb.append(obj);
+        } else if (obj instanceof String) {
+            sb.append(obj);
+        } else {
+            sb.append("\'");
+            sb.append(obj);
+            sb.append("\'");
+        }
+    }
+
+    private boolean shouldEscapeKey(String s) {
+        for (char c : s.toCharArray()) {
+            if (!Character.isAlphabetic(c) && !Character.isDigit(c) && c != '$') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -409,7 +505,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
          * @param context   The context
          * @param criterion The criterion
          */
-        void handle(CriteriaContext context, StringBuilder sb, T criterion);
+        void handle(CriteriaContext context, Map<String, Object> query, T criterion);
     }
 
     /**
@@ -445,7 +541,6 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         private final AtomicInteger position = new AtomicInteger(0);
         private final Map<String, String> additionalRequiredParameters = new LinkedHashMap<>();
         private final List<QueryParameterBinding> parameterBindings;
-        private final StringBuilder query = new StringBuilder();
         private final boolean allowJoins;
         private final QueryModel queryObject;
         private final boolean escape;
@@ -487,33 +582,15 @@ public class MongoDbQueryBuilder implements QueryBuilder {
 //            return placeholder.name;
 //        }
 
-        public String getFinalQuery() {
-            return query.toString();
-        }
-
-        public List<String> getQueryParts() {
-            return Collections.emptyList();
-        }
-
         /**
          * @return The query string
          */
-        public StringBuilder getQuery() {
-            return query;
-        }
 
         /**
          * @return Does the query allow joins
          */
         public boolean isAllowJoins() {
             return allowJoins;
-        }
-
-        /**
-         * @return The query model object
-         */
-        public QueryModel getQueryModel() {
-            return queryObject;
         }
 
 //        /**

@@ -21,6 +21,7 @@ import io.micronaut.core.convert.ConversionContext;
 import io.micronaut.core.type.Argument;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
+import io.micronaut.data.annotation.Query;
 import io.micronaut.data.annotation.repeatable.JoinSpecifications;
 import io.micronaut.data.exceptions.DataAccessException;
 import io.micronaut.data.model.DataType;
@@ -155,8 +156,18 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         }
     }
 
+    private <T> Bson getUpdate(PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity) {
+        String query = preparedQuery.getAnnotationMetadata().stringValue(Query.class, "update")
+                .orElseThrow(() -> new IllegalArgumentException("Update query is not provided!"));
+        return getQuery(preparedQuery, persistentEntity, query);
+    }
+
     private <T> Bson getFilter(PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity) {
         String query = preparedQuery.getQuery();
+        return getQuery(preparedQuery, persistentEntity, query);
+    }
+
+    private <T> BsonDocument getQuery(PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity, String query) {
         if (StringUtils.isEmpty(query)) {
             return EMPTY;
         }
@@ -214,7 +225,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 }
                 previousValue = resolveParameterValue(previousPopulatedValueParameter, preparedQuery.getParameterArray());
             }
-//                value = context.getRuntimeEntityRegistry().autoPopulateRuntimeProperty(persistentProperty, previousValue);
+            value = runtimeEntityRegistry.autoPopulateRuntimeProperty(persistentProperty, previousValue);
 //                value = context.convert(connection, value, persistentProperty);
             value = null;
             parameterConverter = null;
@@ -235,8 +246,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 Argument<?> argument = parameterIndex > -1 ? preparedQuery.getArguments()[parameterIndex] : null;
 //                    value = context.convert(parameterConverter, connection, value, argument);
             }
-//                context.setStatementParameter(stmt, index++, dataType, value, dialect);
-//            appendValue(q, value);
             if (value instanceof String) {
                 PersistentPropertyPath pp = getRequiredPropertyPath(queryParameterBinding, persistentEntity);
                 RuntimePersistentProperty<?> persistentProperty = (RuntimePersistentProperty) pp.getProperty();
@@ -490,7 +499,17 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
     @Override
     public Optional<Number> executeUpdate(PreparedQuery<?, Number> preparedQuery) {
-        return Optional.empty();
+        try (ClientSession clientSession = mongoClient.startSession()) {
+            RuntimePersistentEntity<?> persistentEntity = runtimeEntityRegistry.getEntity(preparedQuery.getRootEntity());
+            Bson update = getUpdate(preparedQuery, persistentEntity);
+            Bson filter = getFilter(preparedQuery, persistentEntity);
+            if (QUERY_LOG.isDebugEnabled()) {
+                QUERY_LOG.debug("Executing Mongo 'updateMany' with filter: {} and update: {}", filter.toBsonDocument().toJson(), update.toBsonDocument().toJson());
+            }
+            UpdateResult updateResult = getCollection(persistentEntity, persistentEntity.getIntrospection().getBeanType())
+                    .updateMany(clientSession, filter, update);
+            return Optional.of(updateResult.getModifiedCount());
+        }
     }
 
     @Override
@@ -594,13 +613,15 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
             @Override
             protected void execute() throws RuntimeException {
-                MongoCollection<T> collection = getCollection(persistentEntity, persistentEntity.getIntrospection().getBeanType());
                 Object id = persistentEntity.getIdentity().getProperty().get(entity);
                 Bson filter = Utils.filterById(conversionService, persistentEntity, id);
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'replaceOne' with filter: {}", filter.toBsonDocument().toJson());
                 }
-                UpdateResult updateResult = collection.replaceOne(ctx.clientSession, filter, entity);
+                BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(entity, getDatabase().getCodecRegistry());
+                bsonDocument.remove("_id");
+                UpdateResult updateResult = getCollection(persistentEntity, BsonDocument.class)
+                        .replaceOne(ctx.clientSession, filter, bsonDocument);
                 modifiedCount = updateResult.getModifiedCount();
             }
         };

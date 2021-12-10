@@ -15,12 +15,16 @@
  */
 package io.micronaut.data.model.query.builder;
 
+import io.micronaut.core.annotation.AnnotationValueBuilder;
 import io.micronaut.core.annotation.NonNull;
+import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.util.ArgumentUtils;
 import io.micronaut.data.model.DataType;
 
+import java.lang.annotation.Annotation;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -36,6 +40,14 @@ public interface QueryResult {
      */
     @NonNull
     String getQuery();
+
+    /**
+     * @return A string representation of the update part.
+     */
+    @Nullable
+    default String getUpdate() {
+        return null;
+    }
 
     /**
      * @return A string parts representation of the original query.
@@ -83,6 +95,10 @@ public interface QueryResult {
     default long getOffset() {
         return 0;
     }
+
+    default void applyAdditionalAnnotations(Annotatable annotatable) {
+    }
+
 
     /**
      * Creates a new encoded query.
@@ -183,5 +199,10 @@ public interface QueryResult {
                 return additionalRequiredParameters;
             }
         };
+    }
+
+    interface Annotatable {
+
+        <T extends Annotation>  void annotate(@NonNull Class<T> annotationType, @NonNull Consumer<AnnotationValueBuilder<T>> consumer);
     }
 }

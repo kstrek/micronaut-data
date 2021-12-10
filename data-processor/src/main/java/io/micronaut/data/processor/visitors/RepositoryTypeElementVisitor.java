@@ -333,9 +333,15 @@ public class RepositoryTypeElementVisitor implements TypeElementVisitor<Reposito
                             }
                     );
                 } else {
-                    element.annotate(Query.class, annotationBuilder ->
-                            annotationBuilder.value(queryResult.getQuery())
+                    element.annotate(Query.class, annotationBuilder -> {
+                                annotationBuilder.value(queryResult.getQuery());
+                                String update = queryResult.getUpdate();
+                                if (StringUtils.isNotEmpty(update)) {
+                                    annotationBuilder.member("update", queryResult.getUpdate());
+                                }
+                            }
                     );
+                    queryResult.applyAdditionalAnnotations(element::annotate);
                 }
             }
         }

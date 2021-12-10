@@ -103,10 +103,10 @@ class MongoCriteriaSpec extends Specification {
             if (predicate) {
                 criteriaQuery.where(predicate)
             }
-            String whereSqlQuery = getWhereQueryPart(criteriaQuery)
+            String predicateQuery = getPredicateQuery(criteriaQuery)
 
         expect:
-            whereSqlQuery == expectedWhereQuery
+            predicateQuery == expectedWhereQuery
 
         where:
             specification << [
@@ -134,12 +134,80 @@ class MongoCriteriaSpec extends Specification {
                     } as Specification
             ]
             expectedWhereQuery << [
-                    '{ $and: [ { enabled: { $gte: true } }, { enabled: { $lte: false } } ] }',
-                    '{ $and: [ { amount: { $gte: { $qpidx: 0 } } }, { amount: { $lte: { $qpidx: 1 } } } ] }',
-                    '{ enabled: { $eq: true } }',
-                    '{ enabled: { $eq: true } }',
-                    '{ enabled: { $eq: true } }',
-                    '{ $and: [ { enabled: { $eq: true } }, { enabled: { $eq: true } } ] }',
+                    '{$and:[{enabled:{$gte:true}},{enabled:{$lte:false}}]}',
+                    '{$and:[{amount:{$gte:{$qpidx:0}}},{amount:{$lte:{$qpidx:1}}}]}',
+                    '{enabled:{$eq:true}}',
+                    '{enabled:{$eq:true}}',
+                    '{enabled:{$eq:true}}',
+                    '{$and:[{enabled:{$eq:true}},{enabled:{$eq:true}}]}',
+            ]
+    }
+
+    @Unroll
+    void "test delete"(DeleteSpecification specification) {
+        given:
+            PersistentEntityRoot entityRoot = createRoot(criteriaDelete)
+            def predicate = specification.toPredicate(entityRoot, criteriaDelete, criteriaBuilder)
+            if (predicate) {
+                criteriaDelete.where(predicate)
+            }
+            String predicateQuery = getPredicateQuery(criteriaDelete)
+
+        expect:
+            predicateQuery == expectedQuery
+
+        where:
+            specification << [
+                    { root, query, cb ->
+                        cb.ge(root.get("amount"), 1000)
+                    } as DeleteSpecification,
+            ]
+            expectedQuery << [
+                    '''{amount:{$gte:1000}}''',
+            ]
+    }
+
+    @Unroll
+    void "test update"(UpdateSpecification specification) {
+        given:
+            PersistentEntityRoot entityRoot = createRoot(criteriaUpdate)
+            def predicate = specification.toPredicate(entityRoot, criteriaUpdate, criteriaBuilder)
+            if (predicate) {
+                criteriaUpdate.where(predicate)
+            }
+            String predicateQuery = getPredicateQuery(criteriaUpdate)
+            String updateQuery = getUpdateQuery(criteriaUpdate)
+
+        expect:
+            predicateQuery == expectedPredicateQuery
+            updateQuery == expectedUpdateQuery
+        where:
+            specification << [
+                    { root, query, cb ->
+                        query.set("name", "ABC")
+                        query.set(root.get("amount"), 123)
+                        cb.ge(root.get("amount"), 1000)
+                    } as UpdateSpecification,
+                    { root, query, cb ->
+                        query.set("name", cb.parameter(String))
+                        query.set(root.get("amount"), cb.parameter(Integer))
+                        cb.ge(root.get("amount"), 1000)
+                    } as UpdateSpecification,
+                    { root, query, cb ->
+                        query.set("name", "test")
+                        query.set(root.get("amount"), cb.parameter(Integer))
+                        cb.ge(root.get("amount"), 1000)
+                    } as UpdateSpecification,
+            ]
+            expectedPredicateQuery << [
+                    '''{amount:{$gte:1000}}''',
+                    '''{amount:{$gte:1000}}''',
+                    '''{amount:{$gte:1000}}''',
+            ]
+            expectedUpdateQuery << [
+                    '''{$set:{name:ABC,amount:123}}''',
+                    '''{$set:{name:{$qpidx:0},amount:{$qpidx:1}}}''',
+                    '''{$set:{name:test,amount:{$qpidx:0}}}''',
             ]
     }
 
@@ -148,22 +216,22 @@ class MongoCriteriaSpec extends Specification {
         given:
             PersistentEntityRoot entityRoot = createRoot(criteriaQuery)
             criteriaQuery.where(criteriaBuilder."$predicate"(entityRoot.get(property)))
-            def whereSqlQuery = getWhereQueryPart(criteriaQuery)
+            def predicateQuery = getPredicateQuery(criteriaQuery)
 
         expect:
-            whereSqlQuery == expectedWhereQuery
+            predicateQuery == expectedWhereQuery
 
         where:
             property   | predicate   | expectedWhereQuery
-            "enabled"  | "isTrue"    | '{ enabled: { $eq: true } }'
-            "enabled2" | "isTrue"    | '{ enabled2: { $eq: true } }'
-            "enabled"  | "isFalse"   | '{ enabled: { $eq: false } }'
-            "enabled2" | "isFalse"   | '{ enabled2: { $eq: false } }'
-            "enabled"  | "isNull"    | '{ enabled: { $eq: null } }'
-            "enabled2" | "isNull"    | '{ enabled2: { $eq: null } }'
-            "enabled"  | "isNotNull" | '{ enabled: { $ne: null } }'
-            "enabled2" | "isNotNull" | '{ enabled2: { $ne: null } }'
-            "name"     | "isNotNull" | '{ name: { $ne: null } }'
+            "enabled"  | "isTrue"    | '{enabled:{$eq:true}}'
+            "enabled2" | "isTrue"    | '{enabled2:{$eq:true}}'
+            "enabled"  | "isFalse"   | '{enabled:{$eq:false}}'
+            "enabled2" | "isFalse"   | '{enabled2:{$eq:false}}'
+            "enabled"  | "isNull"    | '{enabled:{$eq:null}}'
+            "enabled2" | "isNull"    | '{enabled2:{$eq:null}}'
+            "enabled"  | "isNotNull" | '{enabled:{$ne:null}}'
+            "enabled2" | "isNotNull" | '{enabled2:{$ne:null}}'
+            "name"     | "isNotNull" | '{name:{$ne:null}}'
     }
 
     @Unroll
@@ -171,22 +239,22 @@ class MongoCriteriaSpec extends Specification {
         given:
             PersistentEntityRoot entityRoot = createRoot(criteriaQuery)
             criteriaQuery.where(criteriaBuilder."$predicate"(entityRoot.get(property)).not())
-            def whereSqlQuery = getWhereQueryPart(criteriaQuery)
+            def predicateQuery = getPredicateQuery(criteriaQuery)
 
         expect:
-            whereSqlQuery == expectedWhereQuery
+            predicateQuery == expectedWhereQuery
 
         where:
             property   | predicate   | expectedWhereQuery
-            "enabled"  | "isTrue"    | '{ enabled: { $eq: false } }'
-            "enabled2" | "isTrue"    | '{ enabled2: { $eq: false } }'
-            "enabled"  | "isFalse"   | '{ enabled: { $eq: true } }'
-            "enabled2" | "isFalse"   | '{ enabled2: { $eq: true } }'
-            "enabled"  | "isNull"    | '{ enabled: { $ne: null } }'
-            "enabled2" | "isNull"    | '{ enabled2: { $ne: null } }'
-            "enabled"  | "isNotNull" | '{ enabled: { $eq: null } }'
-            "enabled2" | "isNotNull" | '{ enabled2: { $eq: null } }'
-            "name"     | "isNotNull" | '{ name: { $eq: null } }'
+            "enabled"  | "isTrue"    | '{enabled:{$eq:false}}'
+            "enabled2" | "isTrue"    | '{enabled2:{$eq:false}}'
+            "enabled"  | "isFalse"   | '{enabled:{$eq:true}}'
+            "enabled2" | "isFalse"   | '{enabled2:{$eq:true}}'
+            "enabled"  | "isNull"    | '{enabled:{$ne:null}}'
+            "enabled2" | "isNull"    | '{enabled2:{$ne:null}}'
+            "enabled"  | "isNotNull" | '{enabled:{$eq:null}}'
+            "enabled2" | "isNotNull" | '{enabled2:{$eq:null}}'
+            "name"     | "isNotNull" | '{name:{$eq:null}}'
     }
 
     @Unroll
@@ -194,23 +262,23 @@ class MongoCriteriaSpec extends Specification {
         given:
             PersistentEntityRoot entityRoot = createRoot(criteriaQuery)
             criteriaQuery.where(criteriaBuilder."$predicate"(entityRoot.get(property1), entityRoot.get(property2)))
-            def whereSqlQuery = getWhereQueryPart(criteriaQuery)
+            def predicateQuery = getPredicateQuery(criteriaQuery)
 
         expect:
-            whereSqlQuery == expectedWhereQuery
+            predicateQuery == expectedWhereQuery
 
         where:
             property1 | property2  | predicate              | expectedWhereQuery
-            "enabled" | "enabled2" | "equal"                | '{ $expr: { $eq: ["$enabled", "$enabled2"] } }'
-            "enabled" | "enabled2" | "notEqual"             | '{ $expr: { $ne: ["$enabled", "$enabled2"] } }'
-            "enabled" | "enabled2" | "greaterThan"          | '{ $expr: { $gt: ["$enabled", "$enabled2"] } }'
-            "enabled" | "enabled2" | "greaterThanOrEqualTo" | '{ $expr: { $gte: ["$enabled", "$enabled2"] } }'
-            "enabled" | "enabled2" | "lessThan"             | '{ $expr: { $lt: ["$enabled", "$enabled2"] } }'
-            "enabled" | "enabled2" | "lessThanOrEqualTo"    | '{ $expr: { $lte: ["$enabled", "$enabled2"] } }'
-            "amount"  | "budget"   | "gt"                   | '{ $expr: { $gt: ["$amount", "$budget"] } }'
-            "amount"  | "budget"   | "ge"                   | '{ $expr: { $gte: ["$amount", "$budget"] } }'
-            "amount"  | "budget"   | "lt"                   | '{ $expr: { $lt: ["$amount", "$budget"] } }'
-            "amount"  | "budget"   | "le"                   | '{ $expr: { $lte: ["$amount", "$budget"] } }'
+            "enabled" | "enabled2" | "equal"                | '{$expr:{$eq:[$enabled,$enabled2]}}'
+            "enabled" | "enabled2" | "notEqual"             | '{$expr:{$ne:[$enabled,$enabled2]}}'
+            "enabled" | "enabled2" | "greaterThan"          | '{$expr:{$gt:[$enabled,$enabled2]}}'
+            "enabled" | "enabled2" | "greaterThanOrEqualTo" | '{$expr:{$gte:[$enabled,$enabled2]}}'
+            "enabled" | "enabled2" | "lessThan"             | '{$expr:{$lt:[$enabled,$enabled2]}}'
+            "enabled" | "enabled2" | "lessThanOrEqualTo"    | '{$expr:{$lte:[$enabled,$enabled2]}}'
+            "amount"  | "budget"   | "gt"                   | '{$expr:{$gt:[$amount,$budget]}}'
+            "amount"  | "budget"   | "ge"                   | '{$expr:{$gte:[$amount,$budget]}}'
+            "amount"  | "budget"   | "lt"                   | '{$expr:{$lt:[$amount,$budget]}}'
+            "amount"  | "budget"   | "le"                   | '{$expr:{$lte:[$amount,$budget]}}'
     }
 
     @Unroll
@@ -218,23 +286,23 @@ class MongoCriteriaSpec extends Specification {
         given:
             PersistentEntityRoot entityRoot = createRoot(criteriaQuery)
             criteriaQuery.where(criteriaBuilder."$predicate"(entityRoot.get(property1), entityRoot.get(property2)).not())
-            def whereSqlQuery = getWhereQueryPart(criteriaQuery)
+            def predicateQuery = getPredicateQuery(criteriaQuery)
 
         expect:
-            whereSqlQuery == expectedWhereQuery
+            predicateQuery == expectedWhereQuery
 
         where:
             property1 | property2  | predicate              | expectedWhereQuery
-            "enabled" | "enabled2" | "equal"                | '{ $expr: { $ne: ["$enabled", "$enabled2"] } }'
-            "enabled" | "enabled2" | "notEqual"             | '{ $expr: { $eq: ["$enabled", "$enabled2"] } }'
-            "enabled" | "enabled2" | "greaterThan"          | '{ $not: { $expr: { $gt: ["$enabled", "$enabled2"] } } }'
-            "enabled" | "enabled2" | "greaterThanOrEqualTo" | '{ $not: { $expr: { $gte: ["$enabled", "$enabled2"] } } }'
-            "enabled" | "enabled2" | "lessThan"             | '{ $not: { $expr: { $lt: ["$enabled", "$enabled2"] } } }'
-            "enabled" | "enabled2" | "lessThanOrEqualTo"    | '{ $not: { $expr: { $lte: ["$enabled", "$enabled2"] } } }'
-            "amount"  | "budget"   | "gt"                   | '{ $not: { $expr: { $gt: ["$amount", "$budget"] } } }'
-            "amount"  | "budget"   | "ge"                   | '{ $not: { $expr: { $gte: ["$amount", "$budget"] } } }'
-            "amount"  | "budget"   | "lt"                   | '{ $not: { $expr: { $lt: ["$amount", "$budget"] } } }'
-            "amount"  | "budget"   | "le"                   | '{ $not: { $expr: { $lte: ["$amount", "$budget"] } } }'
+            "enabled" | "enabled2" | "equal"                | '{$expr:{$ne:[$enabled,$enabled2]}}'
+            "enabled" | "enabled2" | "notEqual"             | '{$expr:{$eq:[$enabled,$enabled2]}}'
+            "enabled" | "enabled2" | "greaterThan"          | '{$not:{$expr:{$gt:[$enabled,$enabled2]}}}'
+            "enabled" | "enabled2" | "greaterThanOrEqualTo" | '{$not:{$expr:{$gte:[$enabled,$enabled2]}}}'
+            "enabled" | "enabled2" | "lessThan"             | '{$not:{$expr:{$lt:[$enabled,$enabled2]}}}'
+            "enabled" | "enabled2" | "lessThanOrEqualTo"    | '{$not:{$expr:{$lte:[$enabled,$enabled2]}}}'
+            "amount"  | "budget"   | "gt"                   | '{$not:{$expr:{$gt:[$amount,$budget]}}}'
+            "amount"  | "budget"   | "ge"                   | '{$not:{$expr:{$gte:[$amount,$budget]}}}'
+            "amount"  | "budget"   | "lt"                   | '{$not:{$expr:{$lt:[$amount,$budget]}}}'
+            "amount"  | "budget"   | "le"                   | '{$not:{$expr:{$lte:[$amount,$budget]}}}'
     }
 
     @Unroll
@@ -242,23 +310,23 @@ class MongoCriteriaSpec extends Specification {
         given:
             PersistentEntityRoot entityRoot = createRoot(criteriaQuery)
             criteriaQuery.where(criteriaBuilder."$predicate"(entityRoot.get(property1), value))
-            def whereSqlQuery = getWhereQueryPart(criteriaQuery)
+            def predicateQuery = getPredicateQuery(criteriaQuery)
 
         expect:
-            whereSqlQuery == expectedWhereQuery
+            predicateQuery == expectedWhereQuery
 
         where:
             property1 | value                   | predicate              | expectedWhereQuery
-            "enabled" | true                    | "equal"                | '{ enabled: { $eq: true } }'
-            "enabled" | true                    | "notEqual"             | '{ enabled: { $ne: true } }'
-            "enabled" | true                    | "greaterThan"          | '{ enabled: { $gt: true } }'
-            "enabled" | true                    | "greaterThanOrEqualTo" | '{ enabled: { $gte: true } }'
-            "enabled" | true                    | "lessThan"             | '{ enabled: { $lt: true } }'
-            "enabled" | true                    | "lessThanOrEqualTo"    | '{ enabled: { $lte: true } }'
-            "amount"  | BigDecimal.valueOf(100) | "gt"                   | '{ amount: { $gt: 100 } }'
-            "amount"  | BigDecimal.valueOf(100) | "ge"                   | '{ amount: { $gte: 100 } }'
-            "amount"  | BigDecimal.valueOf(100) | "lt"                   | '{ amount: { $lt: 100 } }'
-            "amount"  | BigDecimal.valueOf(100) | "le"                   | '{ amount: { $lte: 100 } }'
+            "enabled" | true                    | "equal"                | '{enabled:{$eq:true}}'
+            "enabled" | true                    | "notEqual"             | '{enabled:{$ne:true}}'
+            "enabled" | true                    | "greaterThan"          | '{enabled:{$gt:true}}'
+            "enabled" | true                    | "greaterThanOrEqualTo" | '{enabled:{$gte:true}}'
+            "enabled" | true                    | "lessThan"             | '{enabled:{$lt:true}}'
+            "enabled" | true                    | "lessThanOrEqualTo"    | '{enabled:{$lte:true}}'
+            "amount"  | BigDecimal.valueOf(100) | "gt"                   | '{amount:{$gt:100}}'
+            "amount"  | BigDecimal.valueOf(100) | "ge"                   | '{amount:{$gte:100}}'
+            "amount"  | BigDecimal.valueOf(100) | "lt"                   | '{amount:{$lt:100}}'
+            "amount"  | BigDecimal.valueOf(100) | "le"                   | '{amount:{$lte:100}}'
     }
 
     @Unroll
@@ -266,37 +334,39 @@ class MongoCriteriaSpec extends Specification {
         given:
             PersistentEntityRoot entityRoot = createRoot(criteriaQuery)
             criteriaQuery.where(criteriaBuilder."$predicate"(entityRoot.get(property1), value).not())
-            def whereSqlQuery = getWhereQueryPart(criteriaQuery)
+            def predicateQuery = getPredicateQuery(criteriaQuery)
 
         expect:
-            whereSqlQuery == expectedWhereQuery
+            predicateQuery == expectedWhereQuery
 
         where:
             property1 | value                   | predicate              | expectedWhereQuery
-            "enabled" | true                    | "equal"                | '{ enabled: { $ne: true } }'
-            "enabled" | true                    | "notEqual"             | '{ enabled: { $eq: true } }'
-            "enabled" | true                    | "greaterThan"          | '{ $not: { enabled: { $gt: true } } }'
-            "enabled" | true                    | "greaterThanOrEqualTo" | '{ $not: { enabled: { $gte: true } } }'
-            "enabled" | true                    | "lessThan"             | '{ $not: { enabled: { $lt: true } } }'
-            "enabled" | true                    | "lessThanOrEqualTo"    | '{ $not: { enabled: { $lte: true } } }'
-            "amount"  | BigDecimal.valueOf(100) | "gt"                   | '{ $not: { amount: { $gt: 100 } } }'
-            "amount"  | BigDecimal.valueOf(100) | "ge"                   | '{ $not: { amount: { $gte: 100 } } }'
-            "amount"  | BigDecimal.valueOf(100) | "lt"                   | '{ $not: { amount: { $lt: 100 } } }'
-            "amount"  | BigDecimal.valueOf(100) | "le"                   | '{ $not: { amount: { $lte: 100 } } }'
+            "enabled" | true                    | "equal"                | '{enabled:{$ne:true}}'
+            "enabled" | true                    | "notEqual"             | '{enabled:{$eq:true}}'
+            "enabled" | true                    | "greaterThan"          | '{$not:{enabled:{$gt:true}}}'
+            "enabled" | true                    | "greaterThanOrEqualTo" | '{$not:{enabled:{$gte:true}}}'
+            "enabled" | true                    | "lessThan"             | '{$not:{enabled:{$lt:true}}}'
+            "enabled" | true                    | "lessThanOrEqualTo"    | '{$not:{enabled:{$lte:true}}}'
+            "amount"  | BigDecimal.valueOf(100) | "gt"                   | '{$not:{amount:{$gt:100}}}'
+            "amount"  | BigDecimal.valueOf(100) | "ge"                   | '{$not:{amount:{$gte:100}}}'
+            "amount"  | BigDecimal.valueOf(100) | "lt"                   | '{$not:{amount:{$lt:100}}}'
+            "amount"  | BigDecimal.valueOf(100) | "le"                   | '{$not:{amount:{$lte:100}}}'
     }
 
-    private static String getSelectQueryPart(PersistentEntityCriteriaQuery<Object> query) {
-        def sqlQuery = getSqlQuery(query)
-        return sqlQuery.substring("SELECT ".length(), sqlQuery.indexOf(" FROM"))
-    }
-
-    private static String getWhereQueryPart(PersistentEntityCriteriaQuery<Object> query) {
-        def sqlQuery = getSqlQuery(query)
-        return sqlQuery
-    }
-
-    private static String getSqlQuery(def query) {
+    private static String getPredicateQuery(PersistentEntityCriteriaQuery<Object> query) {
         return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getQuery()
+    }
+
+    private static String getPredicateQuery(PersistentEntityCriteriaDelete<Object> query) {
+        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getQuery()
+    }
+
+    private static String getPredicateQuery(PersistentEntityCriteriaUpdate<Object> query) {
+        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getQuery()
+    }
+
+    private static String getUpdateQuery(PersistentEntityCriteriaUpdate<Object> query) {
+        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getUpdate()
     }
 
     @CompileStatic
