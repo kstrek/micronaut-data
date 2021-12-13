@@ -48,11 +48,20 @@ public interface QueryResult {
     default String getUpdate() {
         return null;
     }
+
     /**
      * @return A string representation of the sort part.
      */
     @Nullable
     default String getSort() {
+
+        return null;
+    }
+    /**
+     * @return A string representation of the aggregate part.
+     */
+    @Nullable
+    default String getAggregate() {
         return null;
     }
 

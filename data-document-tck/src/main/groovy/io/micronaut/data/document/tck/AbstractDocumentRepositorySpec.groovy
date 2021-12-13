@@ -353,8 +353,8 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
             bookRepository.findTop3OrderByTitle()[0].title == 'Along Came a Spider'
             personRepository.countByAgeGreaterThan(33) == 2
             personRepository.countByAgeLessThan(33) == 1
-//            personRepository.findAgeByName("Jeff") == 40
-//            personRepository.findAgeByName("Ivan") == 30
+            personRepository.findAgeByName("Jeff") == 40
+            personRepository.findAgeByName("Ivan") == 30
 //            personRepository.findMaxAgeByNameLike("J%") == 40
 //            personRepository.findMinAgeByNameLike("J%") == 35
 //            personRepository.getSumAgeByNameLike("J%") == 75

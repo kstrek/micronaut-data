@@ -4,17 +4,14 @@ import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.UnwindOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micronaut.context.annotation.EachBean;
 import io.micronaut.core.annotation.AnnotationMetadata;
-import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.core.beans.BeanWrapper;
@@ -23,12 +20,10 @@ import io.micronaut.core.type.Argument;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
 import io.micronaut.data.annotation.Query;
-import io.micronaut.data.annotation.repeatable.JoinSpecifications;
 import io.micronaut.data.exceptions.DataAccessException;
 import io.micronaut.data.model.DataType;
 import io.micronaut.data.model.Page;
 import io.micronaut.data.model.Pageable;
-import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.PersistentPropertyPath;
 import io.micronaut.data.model.Sort;
 import io.micronaut.data.model.query.builder.sql.Dialect;
@@ -59,6 +54,7 @@ import org.bson.BsonArray;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentWrapper;
 import org.bson.BsonInt32;
+import org.bson.BsonNull;
 import org.bson.BsonObjectId;
 import org.bson.BsonValue;
 import org.bson.conversions.Bson;
@@ -66,20 +62,17 @@ import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 
 import java.io.Serializable;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Spliterator;
-import java.util.StringJoiner;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 @EachBean(MongoClient.class)
 @Internal
@@ -129,15 +122,54 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             Class<T> type = preparedQuery.getRootEntity();
             Class<R> resultType = preparedQuery.getResultType();
             RuntimePersistentEntity<T> persistentEntity = runtimeEntityRegistry.getEntity(type);
-            Bson filter = getFilter(preparedQuery, persistentEntity);
-            if (QUERY_LOG.isDebugEnabled()) {
-                QUERY_LOG.debug("Executing exists Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
+            String query = preparedQuery.getQuery();
+            Bson filter;
+            List<BsonDocument> pipeline;
+            if (query.startsWith("[")) {
+                pipeline = getPipeline(preparedQuery, persistentEntity);
+                filter = EMPTY;
+            } else {
+                pipeline = null;
+                filter = getFilter(preparedQuery, persistentEntity);
             }
-            return getCollection(persistentEntity, resultType)
-                    .find(clientSession, filter, resultType)
-                    .limit(1)
-                    .first();
+            if (pipeline == null) {
+                if (QUERY_LOG.isDebugEnabled()) {
+                    QUERY_LOG.debug("Executing Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
+                }
+                return getCollection(persistentEntity, resultType)
+                        .find(clientSession, filter, resultType)
+                        .limit(1)
+                        .first();
+            } else {
+                if (QUERY_LOG.isDebugEnabled()) {
+                    QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
+                }
+                boolean isProjection = pipeline.stream().anyMatch(stage -> stage.containsKey("$groupId") || stage.containsKey("$project"));
+                if (isProjection) {
+                    BsonDocument result = getCollection(persistentEntity, BsonDocument.class)
+                            .aggregate(clientSession, pipeline, BsonDocument.class)
+                            .first();
+                    return convertResult(resultType, result);
+                }
+                return getCollection(persistentEntity, resultType)
+                        .aggregate(clientSession, pipeline)
+                        .first();
+            }
         }
+    }
+
+    private <R> R convertResult(Class<R> resultType, BsonDocument result) {
+        BsonValue value;
+        if (result == null) {
+            value = BsonNull.VALUE;
+        } else if (result.size() == 1) {
+            value = result.values().iterator().next().asNumber();
+        } else if (result.size() == 2) {
+            value = result.entrySet().stream().filter(f -> !f.getKey().equals("_id")).findFirst().get().getValue();
+        } else {
+            throw new IllegalStateException();
+        }
+        return conversionService.convertRequired(Utils.toValue(value), resultType);
     }
 
     @Override
@@ -167,6 +199,13 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     private <T> Bson getFilter(PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity) {
         String query = preparedQuery.getQuery();
         return getQuery(preparedQuery, persistentEntity, query);
+    }
+
+    private <T> List<BsonDocument> getPipeline(PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity) {
+        String query = preparedQuery.getQuery();
+        BsonArray bsonArray = BsonArray.parse(query);
+        bsonArray = (BsonArray) replaceQueryParameters(preparedQuery, persistentEntity, bsonArray);
+        return bsonArray.stream().map(BsonValue::asDocument).collect(Collectors.toList());
     }
 
     private <T> BsonDocument getQuery(PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity, String query) {
@@ -343,89 +382,115 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     @Override
     public <T, R> Iterable<R> findAll(PreparedQuery<T, R> preparedQuery) {
         try (ClientSession clientSession = mongoClient.startSession()) {
-            Bson sort = preparedQuery.getAnnotationMetadata().stringValue(Query.class, "sort")
-                    .map(BsonDocument::parse)
-                    .orElse(null);
             Pageable pageable = preparedQuery.getPageable();
-            int skip = 0;
-            int limit = 0;
-            boolean isSingleResult = false;
-            if (pageable != Pageable.UNPAGED) {
-                skip = (int) pageable.getOffset();
-                limit = pageable.getSize();
-                Sort pageableSort = pageable.getSort();
-                if (pageableSort.isSorted() ) {
-                    sort = pageableSort.getOrderBy().stream()
-                            .map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty()))
-                            .collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
-                }
-                if (isSingleResult && pageable.getOffset() > 0) {
-                    pageable = Pageable.from(pageable.getNumber(), 1);
-                }
-//                query += queryBuilder.buildPagination(pageable).getQuery();
-            }
 
             Class<T> type = preparedQuery.getRootEntity();
             Class<R> resultType = preparedQuery.getResultType();
             RuntimePersistentEntity<T> persistentEntity = runtimeEntityRegistry.getEntity(type);
-            Bson filter = getFilter(preparedQuery, persistentEntity);
+
+            String query = preparedQuery.getQuery();
+            Bson filter;
+            List<BsonDocument> pipeline;
+            if (query.startsWith("[")) {
+                pipeline = getPipeline(preparedQuery, persistentEntity);
+                filter = EMPTY;
+            } else {
+                pipeline = null;
+                filter = getFilter(preparedQuery, persistentEntity);
+            }
+
             if (preparedQuery.isCount()) {
-                long count = getCollection(persistentEntity, BsonDocument.class).countDocuments(clientSession, filter);
-                return Collections.singletonList(conversionService.convertRequired(count, resultType));
-            }
-            AnnotationValue<JoinSpecifications> joins = preparedQuery.getAnnotationMetadata().getAnnotation(JoinSpecifications.class);
-            List<String> joined = new ArrayList<>();
-            if (joins != null) {
-                for (AnnotationValue<Annotation> join : joins.getAnnotations("value")) {
-                    join.stringValue().ifPresent(joined::add);
+                if (pipeline == null) {
+                    long count = getCollection(persistentEntity, BsonDocument.class)
+                            .countDocuments(clientSession, filter);
+                    return Collections.singletonList(conversionService.convertRequired(count, resultType));
+                } else {
+                    return Collections.singletonList(
+                            getCollection(persistentEntity, type)
+                                    .aggregate(clientSession, pipeline, BsonDocument.class)
+                                    .map(bsonDocument -> convertResult(resultType, bsonDocument))
+                                    .first()
+                    );
                 }
             }
-            List<Bson> pipeline = new ArrayList<>();
-            for (String join : joined) {
-                StringJoiner fullPath = new StringJoiner(".");
-                String prev = null;
-                for (String path : StringUtils.splitOmitEmptyStrings(join, '.')) {
-                    fullPath.add(path);
-                    String thisPath = fullPath.toString();
-                    PersistentPropertyPath propertyPath = persistentEntity.getPropertyPath(thisPath);
-                    PersistentProperty property = propertyPath.getProperty();
-                    if (!(property instanceof RuntimeAssociation)) {
-                        continue;
+            if (pipeline == null) {
+                Bson sort = null;
+                int skip = 0;
+                int limit = 0;
+                boolean isSingleResult = false;
+                if (pageable != Pageable.UNPAGED) {
+                    skip = (int) pageable.getOffset();
+                    limit = pageable.getSize();
+                    Sort pageableSort = pageable.getSort();
+                    if (pageableSort.isSorted()) {
+                        sort = pageableSort.getOrderBy().stream()
+                                .map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty()))
+                                .collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
+
+
                     }
-                    RuntimeAssociation<Object> runtimeAssociation = (RuntimeAssociation) property;
-                    if (runtimeAssociation.isForeignKey()) {
-                        pipeline.add(Aggregates.lookup(
-                                runtimeAssociation.getAssociatedEntity().getPersistedName(),
-                                (prev == null) ? "_id" : prev + "._id",
-                                runtimeAssociation.getInverseSide().get().getName() + "._id",
-                                thisPath)
-                        );
-                    } else {
-                        pipeline.add(Aggregates.lookup(
-                                runtimeAssociation.getAssociatedEntity().getPersistedName(),
-                                thisPath + "._id",
-                                "_id",
-                                thisPath)
-                        );
-                        pipeline.add(Aggregates.unwind("$" + thisPath, new UnwindOptions().preserveNullAndEmptyArrays(true)));
+                    if (isSingleResult && pageable.getOffset() > 0) {
+                        pageable = Pageable.from(pageable.getNumber(), 1);
                     }
-                    prev = thisPath;
                 }
-            }
-            if (pipeline.isEmpty()) {
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'find' with filter: {} skip: {} limit: {}", filter.toBsonDocument().toJson(), skip, limit);
                 }
-                Spliterator<R> spliterator = getCollection(persistentEntity, resultType)
+                return getCollection(persistentEntity, resultType)
                         .find(clientSession, filter, resultType)
                         .skip(skip)
                         .limit(limit)
                         .sort(sort)
-                        .spliterator();
-                return StreamSupport.stream(spliterator, false).collect(Collectors.toList());
+                        .into(new ArrayList<>(limit > 0 ? limit : 20));
             }
-            Spliterator<R> spliterator = getCollection(persistentEntity, resultType).aggregate(clientSession, pipeline, resultType).spliterator();
-            return StreamSupport.stream(spliterator, false).collect(Collectors.toList());
+            boolean isSingleResult = false;
+            int limit = 0;
+            if (pageable != Pageable.UNPAGED) {
+                if (isSingleResult && pageable.getOffset() > 0) {
+                    pageable = Pageable.from(pageable.getNumber(), 1);
+                }
+                int skip = (int) pageable.getOffset();
+                limit = pageable.getSize();
+                Sort pageableSort = pageable.getSort();
+                if (pageableSort.isSorted()) {
+                    Bson sort = pageableSort.getOrderBy().stream()
+                            .map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty()))
+                            .collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
+                    addStageToPipelineBefore(pipeline, sort.toBsonDocument(), "$limit", "$skip");
+                }
+                if (skip > 0) {
+                    pipeline.add(new BsonDocument().append("$skip", new BsonInt32(skip)));
+                }
+                if (limit > 0) {
+                    pipeline.add(new BsonDocument().append("$limit", new BsonInt32(limit)));
+                }
+            }
+            if (QUERY_LOG.isDebugEnabled()) {
+                QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
+            }
+            return getCollection(persistentEntity, resultType)
+                    .aggregate(clientSession, pipeline, resultType)
+                    .into(new ArrayList<>(limit > 0 ? limit : 20));
+        }
+    }
+
+    private void addStageToPipelineBefore(List<BsonDocument> pipeline, BsonDocument stageToAdd, String... beforeStages) {
+        int lastFoundIndex = -1;
+        int index = 0;
+        for (Iterator<BsonDocument> iterator = pipeline.iterator(); iterator.hasNext(); ) {
+            BsonDocument stage = iterator.next();
+            for (String beforeStageName : beforeStages) {
+                if (stage.containsKey(beforeStageName)) {
+                    lastFoundIndex = index;
+                    break;
+                }
+            }
+            index++;
+        }
+        if (lastFoundIndex > -1) {
+            pipeline.add(lastFoundIndex, stageToAdd);
+        } else {
+            pipeline.add(stageToAdd);
         }
     }
 

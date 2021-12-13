@@ -42,6 +42,19 @@ final class Utils {
         throw new IllegalStateException("Cannot determine id!");
     }
 
+    static Object toValue(BsonValue bsonValue) {
+        switch (bsonValue.getBsonType()) {
+            case STRING:
+                return bsonValue.asString().getValue();
+            case INT32:
+                return bsonValue.asInt32().getValue();
+            case INT64:
+                return bsonValue.asInt64().getValue();
+            default:
+                throw new IllegalStateException("Not implemented for: " + bsonValue.getBsonType());
+        }
+    }
+
     static BsonValue toBsonValue(ConversionService<?> conversionService, Object value) {
         if (value == null) {
             return BsonNull.VALUE;
