@@ -23,6 +23,12 @@ class Test {
     @Relation(value = Relation.Kind.ONE_TO_MANY, mappedBy = "test")
     private List<OtherEntity> others;
 
+    @Relation(value = Relation.Kind.ONE_TO_ONE)
+    private OtherEntity oneOther;
+
+    @Relation(value = Relation.Kind.MANY_TO_ONE)
+    private OtherEntity manyToOneOther;
+
     public Test(String name) {
         this.name = name;
     }
@@ -85,5 +91,21 @@ class Test {
 
     public void setOthers(List<OtherEntity> others) {
         this.others = others;
+    }
+
+    public OtherEntity getOneOther() {
+        return oneOther;
+    }
+
+    public void setOneOther(OtherEntity oneOther) {
+        this.oneOther = oneOther;
+    }
+
+    public OtherEntity getManyToOneOther() {
+        return manyToOneOther;
+    }
+
+    public void setManyToOneOther(OtherEntity manyToOneOther) {
+        this.manyToOneOther = manyToOneOther;
     }
 }

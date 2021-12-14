@@ -4,8 +4,10 @@ import com.mongodb.client.model.Filters;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.convert.ConversionService;
+import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.RuntimePersistentProperty;
+import io.micronaut.serde.config.annotation.SerdeConfig;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
 import org.bson.BsonNull;
@@ -42,6 +44,28 @@ final class Utils {
         throw new IllegalStateException("Cannot determine id!");
     }
 
+    static Bson filterByIdAndVersion(ConversionService<?> conversionService, RuntimePersistentEntity persistentEntity, Object entity) {
+        if (persistentEntity.getIdentity() == null) {
+            throw new IllegalStateException("Cannot determine id!");
+        }
+        Object idValue = persistentEntity.getIdentity().getProperty().get(entity);
+        RuntimePersistentProperty version = persistentEntity.getVersion();
+        if (version != null) {
+            Object versionValue = version.getProperty().get(entity);
+            return Filters.and(
+                    filterById(conversionService, persistentEntity, idValue),
+                    Filters.eq(getPropertyPersistName(version), versionValue)
+            );
+        }
+        return filterById(conversionService, persistentEntity, idValue);
+    }
+
+    private static String getPropertyPersistName(PersistentProperty property) {
+        return property.getAnnotationMetadata()
+                .stringValue(SerdeConfig.class, SerdeConfig.PROPERTY)
+                .orElseGet(property::getName);
+    }
+
     static Object toValue(BsonValue bsonValue) {
         switch (bsonValue.getBsonType()) {
             case STRING:
@@ -71,7 +95,8 @@ final class Utils {
         if (value instanceof ObjectId) {
             return new BsonObjectId((ObjectId) value);
         }
-        throw new IllegalStateException("Not implemented for: " + value);
+        return BsonNull.VALUE;
+//        throw new IllegalStateException("Not implemented for: " + value);
     }
 
     static BsonValue toBsonValue(ConversionService<?> conversionService, BsonType bsonType, Object value) {

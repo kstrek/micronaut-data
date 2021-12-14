@@ -5,7 +5,9 @@ import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.util.ArgumentUtils;
+import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
+import io.micronaut.data.annotation.Relation;
 import io.micronaut.data.annotation.TypeRole;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.Embedded;
@@ -21,7 +23,6 @@ import io.micronaut.data.model.query.QueryModel;
 import io.micronaut.data.model.query.builder.QueryBuilder;
 import io.micronaut.data.model.query.builder.QueryParameterBinding;
 import io.micronaut.data.model.query.builder.QueryResult;
-import io.micronaut.data.model.runtime.RuntimeAssociation;
 import io.micronaut.serde.config.annotation.SerdeConfig;
 
 import javax.validation.constraints.NotNull;
@@ -43,6 +44,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static java.util.Arrays.asList;
+import static java.util.Collections.singletonList;
 import static java.util.Collections.singletonMap;
 
 public class MongoDbQueryBuilder implements QueryBuilder {
@@ -51,12 +53,31 @@ public class MongoDbQueryBuilder implements QueryBuilder {
 
     {
         addCriterionHandler(QueryModel.Negation.class, (ctx, obj, negation) -> {
-            Map<String, Object> neg = new LinkedHashMap<>();
-            obj.put("$not", neg);
             if (negation.getCriteria().size() == 1) {
-                handleJunction(ctx, neg, negation, "$or");
+                QueryModel.Criterion criterion = negation.getCriteria().iterator().next();
+                if (criterion instanceof QueryModel.In) {
+                    QueryModel.In in = (QueryModel.In) criterion;
+                    handleCriterion(ctx, obj, new QueryModel.NotIn(in.getName(), in.getValue()));
+                    return;
+                }
+                if (criterion instanceof QueryModel.NotIn) {
+                    QueryModel.NotIn notIn = (QueryModel.NotIn) criterion;
+                    handleCriterion(ctx, obj, new QueryModel.In(notIn.getName(), notIn.getValue()));
+                    return;
+                }
+                if (criterion instanceof QueryModel.PropertyCriterion || criterion instanceof QueryModel.PropertyComparisonCriterion) {
+                    Map<String, Object> neg = new LinkedHashMap<>();
+                    handleCriterion(ctx, neg, criterion);
+                    if (neg.size() != 1) {
+                        throw new IllegalStateException("Expected size of 1");
+                    }
+                    String key = neg.keySet().iterator().next();
+                    obj.put(key, singletonMap("$neg", neg.get(key)));
+                } else {
+                    throw new IllegalStateException("Negation is not supported for this criterion: " + criterion);
+                }
             } else {
-                handleCriterion(ctx, neg, negation.getCriteria().iterator().next());
+                throw new IllegalStateException("Negation not supported on multiple criterion: " + negation);
             }
         });
 
@@ -66,6 +87,9 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         addCriterionHandler(QueryModel.IsFalse.class, (context, sb, criterion) -> handleCriterion(context, sb, new QueryModel.Equals(criterion.getProperty(), false)));
         addCriterionHandler(QueryModel.Equals.class, propertyOperatorExpression("$eq"));
         addCriterionHandler(QueryModel.IdEquals.class, (context, sb, criterion) -> handleCriterion(context, sb, new QueryModel.Equals("id", criterion.getValue())));
+        addCriterionHandler(QueryModel.VersionEquals.class, (context, sb, criterion) -> {
+            handleCriterion(context, sb, new QueryModel.Equals(context.getPersistentEntity().getVersion().getName(), criterion.getValue()));
+        });
         addCriterionHandler(QueryModel.NotEquals.class, propertyOperatorExpression("$ne"));
         addCriterionHandler(QueryModel.GreaterThan.class, propertyOperatorExpression("$gt"));
         addCriterionHandler(QueryModel.GreaterThanEquals.class, propertyOperatorExpression("$gte"));
@@ -104,6 +128,26 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                     singletonMap(criterion.getProperty(), singletonMap("$exists", true))
             ));
         });
+        addCriterionHandler(QueryModel.In.class, (context, obj, criterion) -> {
+            PersistentPropertyPath propertyPath = context.getRequiredProperty(criterion);
+            Object value = criterion.getValue();
+            if (value instanceof Iterable) {
+                List<?> values = CollectionUtils.iterableToList((Iterable) value);
+                obj.put(criterion.getProperty(), singletonMap("$in", values.stream().map(val -> valueRepresentation(context, propertyPath, val)).collect(Collectors.toList())));
+            } else {
+                obj.put(criterion.getProperty(), singletonMap("$in", singletonList(valueRepresentation(context, propertyPath, value))));
+            }
+        });
+        addCriterionHandler(QueryModel.NotIn.class, (context, obj, criterion) -> {
+            PersistentPropertyPath propertyPath = context.getRequiredProperty(criterion);
+            Object value = criterion.getValue();
+            if (value instanceof Iterable) {
+                List<?> values = CollectionUtils.iterableToList((Iterable) value);
+                obj.put(criterion.getProperty(), singletonMap("$nin", values.stream().map(val -> valueRepresentation(context, propertyPath, val)).collect(Collectors.toList())));
+            } else {
+                obj.put(criterion.getProperty(), singletonMap("$nin", singletonList(valueRepresentation(context, propertyPath, value))));
+            }
+        });
     }
 
     private <T extends QueryModel.PropertyCriterion> CriterionHandler<T> propertyOperatorExpression(String op) {
@@ -117,23 +161,36 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                 value = mapper.apply(value);
             }
             PersistentPropertyPath propertyPath = context.getRequiredProperty(criterion);
-            String propertyName = propertyPath.getProperty().getAnnotationMetadata()
-                    .stringValue(SerdeConfig.class, SerdeConfig.PROPERTY)
-                    .orElse(propertyPath.getProperty().getName());
-            StringJoiner sj = new StringJoiner(".");
-            propertyPath.getAssociations().forEach(a -> sj.add(a.getName()));
-            sj.add(propertyName);
-            String path = sj.toString();
-            if (value instanceof BindingParameter) {
-                int index = context.pushParameter(
-                        (BindingParameter) value,
-                        newBindingContext(propertyPath)
-                );
-                obj.put(path, singletonMap(op, singletonMap("$qpidx", index)));
-            } else {
-                obj.put(path, singletonMap(op, asLiteral(value)));
-            }
+            String path = getPath(propertyPath);
+            obj.put(path, singletonMap(op, valueRepresentation(context, propertyPath, value)));
         };
+    }
+
+    private String getPath(PersistentPropertyPath propertyPath) {
+        PersistentProperty property = propertyPath.getProperty();
+        String propertyName = getPropertyPersistName(property);
+        StringJoiner sj = new StringJoiner(".");
+        propertyPath.getAssociations().forEach(a -> sj.add(getPropertyPersistName(a)));
+        sj.add(propertyName);
+        return sj.toString();
+    }
+
+    private String getPropertyPersistName(PersistentProperty property) {
+        return property.getAnnotationMetadata()
+                .stringValue(SerdeConfig.class, SerdeConfig.PROPERTY)
+                .orElseGet(property::getName);
+    }
+
+    private Object valueRepresentation(CriteriaContext context, PersistentPropertyPath propertyPath, Object value) {
+        if (value instanceof BindingParameter) {
+            int index = context.pushParameter(
+                    (BindingParameter) value,
+                    newBindingContext(propertyPath)
+            );
+            return singletonMap("$qpidx", index);
+        } else {
+            return asLiteral(value);
+        }
     }
 
     private <T extends QueryModel.PropertyComparisonCriterion> CriterionHandler<T> comparison(String operator) {
@@ -187,10 +244,10 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         }
 
         List<Map<String, Object>> pipeline = new ArrayList<>();
+        addLookups(pipeline, query.getJoinPaths(), query.getPersistentEntity());
         if (!predicateObj.isEmpty()) {
             pipeline.add(singletonMap("$match", predicateObj));
         }
-        addLookups(pipeline, query.getJoinPaths(), query.getPersistentEntity());
         if (!countObj.isEmpty()) {
             pipeline.add(countObj);
         }
@@ -264,24 +321,29 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                 String thisPath = fullPath.toString();
                 PersistentPropertyPath propertyPath = persistentEntity.getPropertyPath(thisPath);
                 PersistentProperty property = propertyPath.getProperty();
-                if (!(property instanceof RuntimeAssociation)) {
+                if (!(property instanceof Association)) {
                     continue;
                 }
-                RuntimeAssociation<Object> runtimeAssociation = (RuntimeAssociation) property;
-                if (runtimeAssociation.isForeignKey()) {
+                Association association = (Association) property;
+                if (association.getKind() == Relation.Kind.EMBEDDED) {
+                    continue;
+                }
+                if (association.isForeignKey()) {
                     pipeline.add(lookup(
-                            runtimeAssociation.getAssociatedEntity().getPersistedName(),
+                            association.getAssociatedEntity().getPersistedName(),
                             (prev == null) ? "_id" : prev + "._id",
-                            runtimeAssociation.getInverseSide().get().getName() + "._id",
+                            association.getInverseSide().get().getName() + "._id",
                             thisPath)
                     );
                 } else {
                     pipeline.add(lookup(
-                            runtimeAssociation.getAssociatedEntity().getPersistedName(),
+                            association.getAssociatedEntity().getPersistedName(),
                             thisPath + "._id",
                             "_id",
                             thisPath)
                     );
+                }
+                if (association.getKind().isSingleEnded()) {
                     pipeline.add(unwind("$" + thisPath, true));
                 }
                 prev = thisPath;

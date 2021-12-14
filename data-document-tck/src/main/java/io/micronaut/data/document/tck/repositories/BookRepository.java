@@ -1,14 +1,19 @@
 package io.micronaut.data.document.tck.repositories;
 
+import io.micronaut.core.annotation.Nullable;
 import io.micronaut.data.annotation.Join;
+import io.micronaut.data.annotation.TypeDef;
 import io.micronaut.data.document.tck.entities.Author;
 import io.micronaut.data.document.tck.entities.AuthorBooksDto;
 import io.micronaut.data.document.tck.entities.Book;
 import io.micronaut.data.document.tck.entities.BookDto;
+import io.micronaut.data.model.DataType;
 import io.micronaut.data.repository.PageableRepository;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.stream.Stream;
 
 public abstract class BookRepository implements PageableRepository<Book, String> {
 
@@ -27,6 +32,10 @@ public abstract class BookRepository implements PageableRepository<Book, String>
 
     public abstract int deleteByIdAndAuthorId(String id, String authorId);
 
+    public abstract Stream<Book> findTop3ByAuthorNameOrderByTitle(String name);
+
+    public abstract List<Book> queryTop3ByAuthorNameOrderByTitle(String name);
+
     public abstract List<Book> findByAuthorIsNull();
     public abstract List<Book> findByAuthorIsNotNull();
     public abstract int countByTitleIsEmpty();
@@ -36,9 +45,16 @@ public abstract class BookRepository implements PageableRepository<Book, String>
 
     public abstract List<Book> findTop3OrderByTitle();
 
-//    public abstract Stream<Book> findTop3ByAuthorNameOrderByTitle(String name);
-//
-//    public abstract List<Book> queryTop3ByAuthorNameOrderByTitle(String name);
+    public abstract List<Book> findByAuthorName(String name);
+
+    public abstract List<Book> listByTitleIn(@Nullable Collection<String> arg0);
+
+    public abstract List<Book> listByTitleIn(@TypeDef(type = DataType.STRING) @Nullable String[] arg0);
+
+    public abstract List<Book> listByTitleIn(@Nullable @TypeDef(type = DataType.STRING_ARRAY) List<String> arg0);
+
+    public abstract List<Book> findByTitleIn(@Nullable @TypeDef(type = DataType.STRING_ARRAY) String[] arg0);
+
 
     public void saveAuthorBooks(List<AuthorBooksDto> authorBooksDtos) {
         List<Author> authors = new ArrayList<>();

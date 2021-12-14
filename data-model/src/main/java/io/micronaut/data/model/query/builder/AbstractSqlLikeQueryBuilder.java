@@ -227,7 +227,14 @@ public abstract class AbstractSqlLikeQueryBuilder implements QueryBuilder {
             whereClause.append(CLOSE_BRACKET);
         });
 
-        addCriterionHandler(QueryModel.NotIn.class, (ctx, notIn) -> handleSubQuery(ctx, notIn, " NOT IN ("));
+        addCriterionHandler(QueryModel.NotIn.class, (ctx, inQuery) -> {
+            QueryPropertyPath propertyPath = ctx.getRequiredProperty(inQuery.getProperty(), QueryModel.In.class);
+            StringBuilder whereClause = ctx.query();
+            appendPropertyRef(whereClause, propertyPath);
+            whereClause.append(" NOT IN (");
+            ctx.pushParameter((BindingParameter) inQuery.getValue(), newBindingContext(propertyPath.propertyPath).expandable());
+            whereClause.append(CLOSE_BRACKET);
+        });
     }
 
     /**

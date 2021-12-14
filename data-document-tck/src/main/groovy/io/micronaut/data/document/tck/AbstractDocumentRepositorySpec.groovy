@@ -1,6 +1,7 @@
 package io.micronaut.data.document.tck
 
 import io.micronaut.context.ApplicationContext
+import io.micronaut.core.util.CollectionUtils
 import io.micronaut.data.document.tck.entities.Author
 import io.micronaut.data.document.tck.entities.AuthorBooksDto
 import io.micronaut.data.document.tck.entities.BasicTypes
@@ -8,11 +9,15 @@ import io.micronaut.data.document.tck.entities.Book
 import io.micronaut.data.document.tck.entities.BookDto
 import io.micronaut.data.document.tck.entities.Page
 import io.micronaut.data.document.tck.entities.Person
+import io.micronaut.data.document.tck.entities.Student
 import io.micronaut.data.document.tck.repositories.AuthorRepository
 import io.micronaut.data.document.tck.repositories.BasicTypesRepository
 import io.micronaut.data.document.tck.repositories.BookRepository
 import io.micronaut.data.document.tck.repositories.PersonRepository
+import io.micronaut.data.document.tck.repositories.StudentRepository
+import io.micronaut.data.exceptions.OptimisticLockException
 import io.micronaut.data.model.Pageable
+import io.micronaut.data.model.Sort
 import spock.lang.AutoCleanup
 import spock.lang.Shared
 import spock.lang.Specification
@@ -26,6 +31,8 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
     abstract BookRepository getBookRepository()
 
     abstract AuthorRepository getAuthorRepository()
+
+    abstract StudentRepository getStudentRepository()
 
     abstract Map<String, String> getProperties()
 
@@ -113,6 +120,20 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
 //            retrieved.dateCreated == saved.dateCreated
 //            retrieved.dateUpdated == saved.dateUpdated
             retrieved.date == saved.date
+    }
+
+    void "test save and fetch author with no books"() {
+        given:
+            def author = new Author(name: "Some Dude")
+            authorRepository.save(author)
+
+            author = authorRepository.queryByName("Some Dude")
+
+        expect:
+            author.books.size() == 0
+
+        cleanup:
+            authorRepository.deleteById(author.id)
     }
 
     void "test save one"() {
@@ -335,6 +356,19 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
             bookRepository.countByTitleIsNotEmpty() == 7
     }
 
+    void "test order by association"() {
+        given:
+            setupBooks()
+
+        when:"Sorting by an assocation"
+            def page = bookRepository.findAll(Pageable.from(Sort.of(
+                    Sort.Order.desc("author.name")
+            )))
+
+        then:
+            page.content
+    }
+
     void "test project on single property"() {
         given:
             setupBooks()
@@ -390,6 +424,57 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
 
         then:
             author.nickName == null
+    }
+
+    void "test project on single ended association"() {
+        given:
+            setupBooks()
+
+        expect:
+            bookRepository.count() == 8
+            bookRepository.queryTop3ByAuthorNameOrderByTitle("Stephen King")
+                    .stream().findFirst().get().title == "Pet Cemetery"
+            bookRepository.queryTop3ByAuthorNameOrderByTitle("Stephen King")
+                    .size() == 2
+            authorRepository.findByBooksTitle("The Stand").name == "Stephen King"
+            authorRepository.findByBooksTitle("The Border").name == "Don Winslow"
+            bookRepository.findByAuthorName("Stephen King").size() == 2
+    }
+
+    void "test join on single ended association"() {
+        given:
+            setupBooks()
+
+        when:
+            def book = bookRepository.findByTitle("Pet Cemetery")
+
+        then:
+            book != null
+            book.title == "Pet Cemetery"
+            book.author != null
+            book.author.id != null
+            book.author.name == "Stephen King"
+    }
+
+    void "test join on many ended association"() {
+        given:
+            saveSampleBooks()
+
+        when:
+            def author = authorRepository.searchByName("Stephen King")
+
+        then:
+            author != null
+            author.books.size() == 2
+            author.books.find { it.title == "The Stand"}
+            author.books.find { it.title == "Pet Cemetery"}
+
+        when:
+            def allAuthors = CollectionUtils.iterableToList(authorRepository.findAll())
+
+        then:
+            allAuthors.size() == 3
+            allAuthors.collect {it.books }.every { it.isEmpty() }
     }
 
     void "test one-to-many mappedBy"() {
@@ -458,20 +543,20 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
             author.getBooks()[0].preRemove == 0
             author.getBooks()[0].postRemove == 0
 
-            def result1 = author.getBooks().find {book -> book.title == "Book1" }
-            result1.pages.size() == 1
-            result1.pages.find {page -> page.num = 1}
-
-            def result2 = author.getBooks().find {book -> book.title == "Book2" }
-            result2.pages.size() == 2
-            result2.pages.find {page -> page.num = 21}
-            result2.pages.find {page -> page.num = 22}
-
-            def result3 = author.getBooks().find {book -> book.title == "Book3" }
-            result3.pages.size() == 3
-            result3.pages.find {page -> page.num = 31}
-            result3.pages.find {page -> page.num = 32}
-            result3.pages.find {page -> page.num = 33}
+//            def result1 = author.getBooks().find {book -> book.title == "Book1" }
+//            result1.pages.size() == 1
+//            result1.pages.find {page -> page.num = 1}
+//
+//            def result2 = author.getBooks().find {book -> book.title == "Book2" }
+//            result2.pages.size() == 2
+//            result2.pages.find {page -> page.num = 21}
+//            result2.pages.find {page -> page.num = 22}
+//
+//            def result3 = author.getBooks().find {book -> book.title == "Book3" }
+//            result3.pages.size() == 3
+//            result3.pages.find {page -> page.num = 31}
+//            result3.pages.find {page -> page.num = 32}
+//            result3.pages.find {page -> page.num = 33}
 
         when:
             def newBook = new Book()
@@ -501,6 +586,213 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
 //     TODO: Consider whether to support cascade removes
 //        author.getBooks()[0].preRemove == 1
 //        author.getBooks()[0].postRemove == 1
+    }
+
+    void "test IN queries"() {
+        given:
+            setupBooks()
+        when:
+            def books1 = bookRepository.listByTitleIn(null as Collection)
+        then:
+            books1.size() == 0
+        when:
+            def books2 = bookRepository.listByTitleIn(["The Stand", "Along Came a Spider", "FFF"] as Collection)
+        then:
+            books2.size() == 2
+        when:
+            def books3 = bookRepository.listByTitleIn([] as Collection)
+        then:
+            books3.size() == 0
+        when:
+            def books4 = bookRepository.listByTitleIn(null as String[])
+        then:
+            books4.size() == 0
+        when:
+            def books5 = bookRepository.listByTitleIn(new String[] {"The Stand", "Along Came a Spider", "FFF"})
+        then:
+            books5.size() == 2
+        when:
+            def books6 = bookRepository.listByTitleIn(new String[0])
+        then:
+            books6.size() == 0
+    }
+
+    void "test string array data type"() {
+        given:
+            setupBooks()
+        when:
+            def books4 = bookRepository.listByTitleIn(["The Stand", "FFF"])
+        then:
+            books4.size() == 1
+        when:
+            def books5 = bookRepository.listByTitleIn(["Xyz", "FFF"])
+        then:
+            books5.size() == 0
+        when:
+            def books6 = bookRepository.listByTitleIn([])
+        then:
+            books6.size() == 0
+        when:
+            def books7 = bookRepository.listByTitleIn(null as Collection)
+        then:
+            books7.size() == 0
+        when:
+            def books8 = bookRepository.findByTitleIn(new String[] {"Xyz", "Ffff", "zzz"})
+        then:
+            books8.size() == 0
+        when:
+            def books9 = bookRepository.findByTitleIn(new String[] {})
+        then:
+            books9.size() == 0
+        when:
+            def books11 = bookRepository.findByTitleIn(null as String[])
+        then:
+            books11.size() == 0
+        then:
+            def books12 = bookRepository.findByTitleIn(new String[] {"The Stand"})
+        then:
+            books12.size() == 1
+    }
+
+    def "test optimistic locking"() {
+        given:
+            def student = new Student("Denis")
+        when:
+            studentRepository.save(student)
+        then:
+            student.version == 0
+        when:
+            student = studentRepository.findById(student.getId()).get()
+        then:
+            student.version == 0
+        when:
+            student.setVersion(5)
+            student.setName("Xyz")
+            studentRepository.update(student)
+        then:
+            def e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 1 got: 0"
+        when:
+            studentRepository.updateByIdAndVersion(student.getId(), student.getVersion(), student.getName())
+        then:
+            e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 1 got: 0"
+        when:
+            studentRepository.delete(student)
+        then:
+            e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 1 got: 0"
+        when:
+            studentRepository.deleteByIdAndVersionAndName(student.getId(), student.getVersion(), student.getName())
+        then:
+            e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 1 got: 0"
+        when:
+            studentRepository.deleteByIdAndVersion(student.getId(), student.getVersion())
+        then:
+            e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 1 got: 0"
+        when:
+            studentRepository.deleteAll([student])
+        then:
+            e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 1 got: 0"
+        when:
+            student = studentRepository.findById(student.getId()).get()
+        then:
+            student.name == "Denis"
+            student.version == 0
+        when:
+            student.setName("Abc")
+            studentRepository.update(student)
+            def student2 = studentRepository.findById(student.getId()).get()
+        then:
+            student.version == 1
+            student2.name == "Abc"
+            student2.version == 1
+        when:
+            studentRepository.updateByIdAndVersion(student2.getId(), student2.getVersion(), "Joe")
+            def student3 = studentRepository.findById(student2.getId()).get()
+        then:
+            student3.name == "Joe"
+            student3.version == 2
+        when:
+            studentRepository.updateById(student2.getId(), "Joe2")
+            def student4 = studentRepository.findById(student2.getId()).get()
+        then:
+            student4.name == "Joe2"
+            student4.version == 2
+        when:
+            studentRepository.deleteByIdAndVersionAndName(student4.getId(), student4.getVersion(), student4.getName())
+            def student5 = studentRepository.findById(student2.getId())
+        then:
+            !student5.isPresent()
+        when:
+            student = new Student("Denis2")
+            studentRepository.save(student)
+            studentRepository.update(student)
+            studentRepository.update(student)
+            studentRepository.update(student)
+        then:
+            student.version == 3
+        when:
+            student = studentRepository.findById(student.getId()).orElseThrow()
+        then:
+            student.version == 3
+        when:
+            studentRepository.delete(student)
+        then:
+            !studentRepository.findById(student.getId()).isPresent()
+        cleanup:
+            studentRepository.deleteAll()
+    }
+
+    def "test batch optimistic locking"() {
+        given:
+            def student1 = new Student("Denis")
+            def student2 = new Student("Frank")
+        when:
+            studentRepository.saveAll([student1, student2])
+        then:
+            student1.version == 0
+            student2.version == 0
+        when:
+            student1 = studentRepository.findById(student1.getId()).get()
+            student2 = studentRepository.findById(student2.getId()).get()
+        then:
+            student1.version == 0
+            student2.version == 0
+        when:
+            studentRepository.updateAll([student1, student2])
+            student1 = studentRepository.findById(student1.getId()).get()
+            student2 = studentRepository.findById(student2.getId()).get()
+        then:
+            student1.version == 1
+            student2.version == 1
+        when:
+            studentRepository.updateAll([student1, student2])
+            student1 = studentRepository.findById(student1.getId()).get()
+            student2 = studentRepository.findById(student2.getId()).get()
+        then:
+            student1.version == 2
+            student2.version == 2
+        when:
+            student1.setVersion(5)
+            student1.setName("Xyz")
+            studentRepository.updateAll([student1, student2])
+        then:
+            def e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 2 got: 1"
+        when:
+            student1 = studentRepository.findById(student1.getId()).get()
+            student2 = studentRepository.findById(student2.getId()).get()
+            student1.setVersion(5)
+            studentRepository.deleteAll([student1, student2])
+        then:
+            e = thrown(OptimisticLockException)
+            e.message == "Execute update returned unexpected row count. Expected: 2 got: 1"
+        cleanup:
+            studentRepository.deleteAll()
     }
 
 }

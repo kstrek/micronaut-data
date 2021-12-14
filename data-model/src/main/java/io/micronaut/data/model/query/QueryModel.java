@@ -1009,8 +1009,17 @@ public interface QueryModel extends Criteria {
     /**
      * Criterion used to restrict the results based on a list of values.
      */
-    class NotIn extends SubqueryCriterion {
+    class NotIn extends PropertyCriterion {
         private QueryModel subquery;
+
+        /**
+         * Constructor for an individual parameter.
+         * @param name The name
+         * @param parameter The parameter
+         */
+        public NotIn(String name, Object parameter) {
+            super(name, parameter);
+        }
 
         /**
          * Constructor for a subquery.

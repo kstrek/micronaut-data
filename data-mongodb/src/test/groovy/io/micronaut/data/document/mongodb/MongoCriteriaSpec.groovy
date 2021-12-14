@@ -131,6 +131,12 @@ class MongoCriteriaSpec extends Specification {
                     } as Specification,
                     { root, query, cb ->
                         cb.and(cb.isTrue(root.get("enabled")), cb.isTrue(root.get("enabled")))
+                    } as Specification,
+                    { root, query, cb ->
+                        root.get("name").in("A", "B", "C")
+                    } as Specification,
+                    { root, query, cb ->
+                        root.get("name").in("A", "B", "C").not()
                     } as Specification
             ]
             expectedWhereQuery << [
@@ -140,6 +146,8 @@ class MongoCriteriaSpec extends Specification {
                     '[{$match:{enabled:{$eq:true}}},{$sort:{amount:-1,budget:1}}]',
                     '{enabled:{$eq:true}}',
                     '{$and:[{enabled:{$eq:true}},{enabled:{$eq:true}}]}',
+                    '''{name:{$in:['A','B','C']}}''',
+                    '''{name:{$nin:['A','B','C']}}''',
             ]
     }
 
@@ -170,17 +178,21 @@ class MongoCriteriaSpec extends Specification {
                                 cb.equal(root.get("amount"), othersJoin.get("amount")),
                                 cb.equal(root.get("amount"), simpleJoin.get("amount")),
                         )
+                    } as Specification,
+                    { root, query, cb ->
+                        def oneOthersJoin = root.join("oneOther")
+                        cb.equal(oneOthersJoin.get("name"), "xyz")
+                    } as Specification,
+                    { root, query, cb ->
+                        def oneOthersJoin = root.join("manyToOneOther")
+                        cb.equal(oneOthersJoin.get("name"), "xyz")
                     } as Specification
             ]
             expectedQuery << [
-                    '''\
-[{$match:{$expr:{$eq:['$amount','$others.amount']}}},\
-{$lookup:{from:'other_entity',localField:'_id',foreignField:'test._id',as:'others'}}]''',
-                    '''[{$match:{$and:[{$expr:{$eq:['$amount','$others.amount']}},{$expr:{$eq:['$amount','$others.simple.amount']}}]}},\
-{$lookup:{from:'other_entity',localField:'_id',foreignField:'test._id',as:'others'}},\
-{$lookup:{from:'simple_entity',localField:'others.simple._id',foreignField:'_id',as:'others.simple'}},\
-{$unwind:{path:'$others.simple',preserveNullAndEmptyArrays:true}},\
-{$lookup:{from:'other_entity',localField:'_id',foreignField:'test._id',as:'others'}}]'''
+                    '''[{$lookup:{from:'other_entity',localField:'_id',foreignField:'test._id',as:'others'}},{$match:{$expr:{$eq:['$amount','$others.amount']}}}]''',
+                    '''[{$lookup:{from:'other_entity',localField:'_id',foreignField:'test._id',as:'others'}},{$lookup:{from:'simple_entity',localField:'others.simple._id',foreignField:'_id',as:'others.simple'}},{$unwind:{path:'$others.simple',preserveNullAndEmptyArrays:true}},{$lookup:{from:'other_entity',localField:'_id',foreignField:'test._id',as:'others'}},{$match:{$and:[{$expr:{$eq:['$amount','$others.amount']}},{$expr:{$eq:['$amount','$others.simple.amount']}}]}}]''',
+                    '''[{$lookup:{from:'other_entity',localField:'oneOther._id',foreignField:'_id',as:'oneOther'}},{$unwind:{path:'$oneOther',preserveNullAndEmptyArrays:true}},{$match:{'oneOther.name':{$eq:'xyz'}}}]''',
+                    '''[{$lookup:{from:'other_entity',localField:'manyToOneOther._id',foreignField:'_id',as:'manyToOneOther'}},{$unwind:{path:'$manyToOneOther',preserveNullAndEmptyArrays:true}},{$match:{'manyToOneOther.name':{$eq:'xyz'}}}]'''
             ]
     }
 
@@ -338,14 +350,14 @@ class MongoCriteriaSpec extends Specification {
             property1 | property2  | predicate              | expectedWhereQuery
             "enabled" | "enabled2" | "equal"                | '''{$expr:{$ne:['$enabled','$enabled2']}}'''
             "enabled" | "enabled2" | "notEqual"             | '''{$expr:{$eq:['$enabled','$enabled2']}}'''
-            "enabled" | "enabled2" | "greaterThan"          | '''{$not:{$expr:{$gt:['$enabled','$enabled2']}}}'''
-            "enabled" | "enabled2" | "greaterThanOrEqualTo" | '''{$not:{$expr:{$gte:['$enabled','$enabled2']}}}'''
-            "enabled" | "enabled2" | "lessThan"             | '''{$not:{$expr:{$lt:['$enabled','$enabled2']}}}'''
-            "enabled" | "enabled2" | "lessThanOrEqualTo"    | '''{$not:{$expr:{$lte:['$enabled','$enabled2']}}}'''
-            "amount"  | "budget"   | "gt"                   | '''{$not:{$expr:{$gt:['$amount','$budget']}}}'''
-            "amount"  | "budget"   | "ge"                   | '''{$not:{$expr:{$gte:['$amount','$budget']}}}'''
-            "amount"  | "budget"   | "lt"                   | '''{$not:{$expr:{$lt:['$amount','$budget']}}}'''
-            "amount"  | "budget"   | "le"                   | '''{$not:{$expr:{$lte:['$amount','$budget']}}}'''
+            "enabled" | "enabled2" | "greaterThan"          | '''{$expr:{$neg:{$gt:['$enabled','$enabled2']}}}'''
+            "enabled" | "enabled2" | "greaterThanOrEqualTo" | '''{$expr:{$neg:{$gte:['$enabled','$enabled2']}}}'''
+            "enabled" | "enabled2" | "lessThan"             | '''{$expr:{$neg:{$lt:['$enabled','$enabled2']}}}'''
+            "enabled" | "enabled2" | "lessThanOrEqualTo"    | '''{$expr:{$neg:{$lte:['$enabled','$enabled2']}}}'''
+            "amount"  | "budget"   | "gt"                   | '''{$expr:{$neg:{$gt:['$amount','$budget']}}}'''
+            "amount"  | "budget"   | "ge"                   | '''{$expr:{$neg:{$gte:['$amount','$budget']}}}'''
+            "amount"  | "budget"   | "lt"                   | '''{$expr:{$neg:{$lt:['$amount','$budget']}}}'''
+            "amount"  | "budget"   | "le"                   | '''{$expr:{$neg:{$lte:['$amount','$budget']}}}'''
     }
 
     @Unroll
@@ -386,14 +398,14 @@ class MongoCriteriaSpec extends Specification {
             property1 | value                   | predicate              | expectedWhereQuery
             "enabled" | true                    | "equal"                | '{enabled:{$ne:true}}'
             "enabled" | true                    | "notEqual"             | '{enabled:{$eq:true}}'
-            "enabled" | true                    | "greaterThan"          | '{$not:{enabled:{$gt:true}}}'
-            "enabled" | true                    | "greaterThanOrEqualTo" | '{$not:{enabled:{$gte:true}}}'
-            "enabled" | true                    | "lessThan"             | '{$not:{enabled:{$lt:true}}}'
-            "enabled" | true                    | "lessThanOrEqualTo"    | '{$not:{enabled:{$lte:true}}}'
-            "amount"  | BigDecimal.valueOf(100) | "gt"                   | '{$not:{amount:{$gt:100}}}'
-            "amount"  | BigDecimal.valueOf(100) | "ge"                   | '{$not:{amount:{$gte:100}}}'
-            "amount"  | BigDecimal.valueOf(100) | "lt"                   | '{$not:{amount:{$lt:100}}}'
-            "amount"  | BigDecimal.valueOf(100) | "le"                   | '{$not:{amount:{$lte:100}}}'
+            "enabled" | true                    | "greaterThan"          | '{enabled:{$neg:{$gt:true}}}'
+            "enabled" | true                    | "greaterThanOrEqualTo" | '{enabled:{$neg:{$gte:true}}}'
+            "enabled" | true                    | "lessThan"             | '{enabled:{$neg:{$lt:true}}}'
+            "enabled" | true                    | "lessThanOrEqualTo"    | '{enabled:{$neg:{$lte:true}}}'
+            "amount"  | BigDecimal.valueOf(100) | "gt"                   | '{amount:{$neg:{$gt:100}}}'
+            "amount"  | BigDecimal.valueOf(100) | "ge"                   | '{amount:{$neg:{$gte:100}}}'
+            "amount"  | BigDecimal.valueOf(100) | "lt"                   | '{amount:{$neg:{$lt:100}}}'
+            "amount"  | BigDecimal.valueOf(100) | "le"                   | '{amount:{$neg:{$lte:100}}}'
     }
 
     private static String getQuery(PersistentEntityCriteriaQuery<Object> query) {
