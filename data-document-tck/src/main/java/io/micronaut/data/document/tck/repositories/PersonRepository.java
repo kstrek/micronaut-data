@@ -6,10 +6,12 @@ import io.micronaut.data.annotation.Id;
 import io.micronaut.data.document.tck.entities.Person;
 import io.micronaut.data.model.Pageable;
 import io.micronaut.data.repository.CrudRepository;
+import io.micronaut.data.repository.jpa.JpaSpecificationExecutor;
+import io.micronaut.data.repository.jpa.criteria.PredicateSpecification;
 
 import java.util.List;
 
-public interface PersonRepository extends CrudRepository<Person, String> {
+public interface PersonRepository extends CrudRepository<Person, String>, JpaSpecificationExecutor<Person> {
 
     Person get(String id);
 
@@ -42,4 +44,14 @@ public interface PersonRepository extends CrudRepository<Person, String> {
 
     int findAgeByName(String name);
 
+    class Specifications {
+
+        public static PredicateSpecification<Person> nameEquals(String name) {
+            return (root, criteriaBuilder) -> criteriaBuilder.equal(root.get("name"), name);
+        }
+
+        public static PredicateSpecification<Person> nameEqualsCaseInsensitive(String name) {
+            return (root, criteriaBuilder) -> criteriaBuilder.equal(criteriaBuilder.lower(root.get("name")), name.toLowerCase());
+        }
+    }
 }

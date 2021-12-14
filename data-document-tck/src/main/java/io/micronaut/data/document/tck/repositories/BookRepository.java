@@ -1,6 +1,8 @@
 package io.micronaut.data.document.tck.repositories;
 
+import io.micronaut.context.annotation.Parameter;
 import io.micronaut.core.annotation.Nullable;
+import io.micronaut.data.annotation.Id;
 import io.micronaut.data.annotation.Join;
 import io.micronaut.data.annotation.TypeDef;
 import io.micronaut.data.document.tck.entities.Author;
@@ -30,6 +32,8 @@ public abstract class BookRepository implements PageableRepository<Book, String>
     @Join("author")
     public abstract Book findByTitle(String title);
 
+    public abstract long updateAuthor(@Parameter("id") @Id String id, @Parameter("author") Author author);
+
     public abstract int deleteByIdAndAuthorId(String id, String authorId);
 
     public abstract Stream<Book> findTop3ByAuthorNameOrderByTitle(String name);
@@ -54,7 +58,6 @@ public abstract class BookRepository implements PageableRepository<Book, String>
     public abstract List<Book> listByTitleIn(@Nullable @TypeDef(type = DataType.STRING_ARRAY) List<String> arg0);
 
     public abstract List<Book> findByTitleIn(@Nullable @TypeDef(type = DataType.STRING_ARRAY) String[] arg0);
-
 
     public void saveAuthorBooks(List<AuthorBooksDto> authorBooksDtos) {
         List<Author> authors = new ArrayList<>();

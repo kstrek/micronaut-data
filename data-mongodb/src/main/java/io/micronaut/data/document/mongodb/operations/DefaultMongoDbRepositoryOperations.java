@@ -222,10 +222,8 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                     case MANY_TO_MANY:
                     case ONE_TO_MANY:
                         if (o instanceof Iterable) {
-                            Iterable iterable = ((Iterable) o);
-                            Iterator iterator = iterable.iterator();
-                            while (iterator.hasNext()) {
-                                triggerPostLoad(iterator.next(), associatedEntity, annotationMetadata);
+                            for (Object value : ((Iterable) o)) {
+                                triggerPostLoad(value, associatedEntity, annotationMetadata);
                             }
                         }
                         continue;
@@ -490,7 +488,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 return getCollection(persistentEntity, resultType)
                         .find(clientSession, filter, resultType)
                         .skip(skip)
-                        .limit(limit)
+                        .limit(Math.max(limit, 0))
                         .sort(sort)
                         .into(new ArrayList<>(limit > 0 ? limit : 20));
             }
