@@ -1,10 +1,15 @@
 package io.micronaut.data.document.mongodb.serde;
 
 import io.micronaut.core.beans.BeanIntrospection;
+import io.micronaut.core.convert.ConversionContext;
 import io.micronaut.core.type.Argument;
 import io.micronaut.data.annotation.GeneratedValue;
+import io.micronaut.data.annotation.MappedProperty;
+import io.micronaut.data.document.serde.CustomConverterDeserializer;
 import io.micronaut.data.document.serde.IdDeserializer;
+import io.micronaut.data.model.runtime.AttributeConverterRegistry;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
+import io.micronaut.data.model.runtime.convert.AttributeConverter;
 import io.micronaut.serde.Decoder;
 import io.micronaut.serde.Deserializer;
 import io.micronaut.serde.bson.custom.CodecBsonDecoder;
@@ -22,11 +27,16 @@ public class DataDecoderContext implements Deserializer.DecoderContext {
 
     private final Argument<ObjectId> OBJECT_ID = Argument.of(ObjectId.class);
 
+    private final AttributeConverterRegistry attributeConverterRegistry;
     private final RuntimePersistentEntity<Object> runtimePersistentEntity;
     private final Deserializer.DecoderContext parent;
     private final CodecRegistry codecRegistry;
 
-    public DataDecoderContext(RuntimePersistentEntity<Object> runtimePersistentEntity, Deserializer.DecoderContext parent, CodecRegistry codecRegistry) {
+    public DataDecoderContext(AttributeConverterRegistry attributeConverterRegistry,
+                              RuntimePersistentEntity<Object> runtimePersistentEntity,
+                              Deserializer.DecoderContext parent,
+                              CodecRegistry codecRegistry) {
+        this.attributeConverterRegistry = attributeConverterRegistry;
         this.runtimePersistentEntity = runtimePersistentEntity;
         this.parent = parent;
         this.codecRegistry = codecRegistry;
@@ -60,6 +70,35 @@ public class DataDecoderContext implements Deserializer.DecoderContext {
                 }
             };
             return (D) idDeserializer;
+        }
+        if (deserializerClass == CustomConverterDeserializer.class) {
+            CustomConverterDeserializer customConverterDeserializer = new CustomConverterDeserializer() {
+
+                @Override
+                public Deserializer<Object> createSpecific(Argument<? super Object> type, DecoderContext decoderContext) throws SerdeException {
+                    Class<?> converterClass = type.getAnnotationMetadata().classValue(MappedProperty.class, "converter").get();
+                    Class<Object> converterPersistedType = type.getAnnotationMetadata().classValue(MappedProperty.class, "converterPersistedType").get();
+                    Argument<Object> convertedType = Argument.of(converterPersistedType);
+                    AttributeConverter<Object, Object> converter = attributeConverterRegistry.getConverter(converterClass);
+                    Deserializer<?> deserializer = findDeserializer(convertedType);
+                    return new Deserializer<Object>() {
+                        @Override
+                        public Object deserialize(Decoder decoder, DecoderContext decoderContext, Argument<? super Object> type) throws IOException {
+                            if (decoder.decodeNull()) {
+                                return null;
+                            }
+                            Object deserialized = deserializer.deserialize(decoder, decoderContext, convertedType);
+                            return converter.convertToEntityValue(deserialized, ConversionContext.of(convertedType));
+                        }
+                    };
+                }
+
+                @Override
+                public Object deserialize(Decoder decoder, DecoderContext decoderContext, Argument<? super Object> type) throws IOException {
+                    throw new IllegalStateException("Create specific call is required!");
+                }
+            };
+            return (D) customConverterDeserializer;
         }
         return parent.findCustomDeserializer(deserializerClass);
     }

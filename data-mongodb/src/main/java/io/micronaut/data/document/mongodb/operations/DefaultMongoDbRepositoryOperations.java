@@ -13,6 +13,7 @@ import com.mongodb.client.result.UpdateResult;
 import io.micronaut.context.annotation.EachBean;
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.Internal;
+import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.core.beans.BeanWrapper;
 import io.micronaut.core.convert.ConversionContext;
@@ -41,6 +42,7 @@ import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.RuntimePersistentProperty;
 import io.micronaut.data.model.runtime.UpdateBatchOperation;
 import io.micronaut.data.model.runtime.UpdateOperation;
+import io.micronaut.data.model.runtime.convert.AttributeConverter;
 import io.micronaut.data.runtime.config.DataSettings;
 import io.micronaut.data.runtime.convert.DataConversionService;
 import io.micronaut.data.runtime.date.DateTimeProvider;
@@ -76,8 +78,7 @@ import java.util.stream.Stream;
 
 @EachBean(MongoClient.class)
 @Internal
-public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperations<ClientSession, Object>
-        implements MongoDbRepositoryOperations, SyncCascadeOperations.SyncCascadeOperationsHelper<DefaultMongoDbRepositoryOperations.MongoDbOperationContext> {
+public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperations<ClientSession, Object> implements MongoDbRepositoryOperations, SyncCascadeOperations.SyncCascadeOperationsHelper<DefaultMongoDbRepositoryOperations.MongoDbOperationContext> {
     private static final Logger QUERY_LOG = DataSettings.QUERY_LOG;
     private final MongoClient mongoClient;
     private final SyncCascadeOperations<MongoDbOperationContext> cascadeOperations;
@@ -93,12 +94,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
      * @param attributeConverterRegistry The attribute converter registry
      * @param mongoClient
      */
-    protected DefaultMongoDbRepositoryOperations(List<MediaTypeCodec> codecs,
-                                                 DateTimeProvider<Object> dateTimeProvider,
-                                                 RuntimeEntityRegistry runtimeEntityRegistry,
-                                                 DataConversionService<?> conversionService,
-                                                 AttributeConverterRegistry attributeConverterRegistry,
-                                                 MongoClient mongoClient) {
+    protected DefaultMongoDbRepositoryOperations(List<MediaTypeCodec> codecs, DateTimeProvider<Object> dateTimeProvider, RuntimeEntityRegistry runtimeEntityRegistry, DataConversionService<?> conversionService, AttributeConverterRegistry attributeConverterRegistry, MongoClient mongoClient) {
         super(codecs, dateTimeProvider, runtimeEntityRegistry, conversionService, attributeConverterRegistry);
         this.mongoClient = mongoClient;
         this.cascadeOperations = new SyncCascadeOperations<>(conversionService, this);
@@ -141,36 +137,27 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
                 }
-                return getCollection(database, persistentEntity, resultType)
-                        .find(clientSession, filter, resultType)
-                        .limit(1)
-                        .map(r -> {
-                            if (type.isInstance(r)) {
-                                return (R) triggerPostLoad(preparedQuery.getAnnotationMetadata(), persistentEntity, type.cast(r));
-                            }
-                            return r;
-                        })
-                        .first();
+                return getCollection(database, persistentEntity, resultType).find(clientSession, filter, resultType).limit(1).map(r -> {
+                    if (type.isInstance(r)) {
+                        return (R) triggerPostLoad(preparedQuery.getAnnotationMetadata(), persistentEntity, type.cast(r));
+                    }
+                    return r;
+                }).first();
             } else {
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
                 }
                 boolean isProjection = pipeline.stream().anyMatch(stage -> stage.containsKey("$groupId") || stage.containsKey("$project"));
                 if (isProjection) {
-                    BsonDocument result = getCollection(database, persistentEntity, BsonDocument.class)
-                            .aggregate(clientSession, pipeline, BsonDocument.class)
-                            .first();
+                    BsonDocument result = getCollection(database, persistentEntity, BsonDocument.class).aggregate(clientSession, pipeline, BsonDocument.class).first();
                     return convertResult(resultType, result);
                 }
-                return getCollection(database, persistentEntity, resultType)
-                        .aggregate(clientSession, pipeline)
-                        .map(r -> {
-                            if (type.isInstance(r)) {
-                                return (R) triggerPostLoad(preparedQuery.getAnnotationMetadata(), persistentEntity, type.cast(r));
-                            }
-                            return r;
-                        })
-                        .first();
+                return getCollection(database, persistentEntity, resultType).aggregate(clientSession, pipeline).map(r -> {
+                    if (type.isInstance(r)) {
+                        return (R) triggerPostLoad(preparedQuery.getAnnotationMetadata(), persistentEntity, type.cast(r));
+                    }
+                    return r;
+                }).first();
             }
         }
     }
@@ -199,12 +186,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing exists Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
             }
-            return getCollection(database, persistentEntity, persistentEntity.getIntrospection().getBeanType())
-                    .find(clientSession, type)
-                    .limit(1)
-                    .filter(filter)
-                    .iterator()
-                    .hasNext();
+            return getCollection(database, persistentEntity, persistentEntity.getIntrospection().getBeanType()).find(clientSession, type).limit(1).filter(filter).iterator().hasNext();
         }
     }
 
@@ -270,10 +252,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         return bsonDocument;
     }
 
-    private <T> BsonValue replaceQueryParameters(CodecRegistry codecRegistry,
-                                                 PreparedQuery<?, ?> preparedQuery,
-                                                 RuntimePersistentEntity<T> persistentEntity,
-                                                 BsonValue value) {
+    private <T> BsonValue replaceQueryParameters(CodecRegistry codecRegistry, PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity, BsonValue value) {
         if (value instanceof BsonDocument) {
             BsonDocument bsonDocument = (BsonDocument) value;
             BsonInt32 queryParameterIndex = bsonDocument.getInt32("$qpidx", null);
@@ -313,11 +292,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         return value;
     }
 
-    private <T> BsonValue getValue(int index,
-                                   QueryParameterBinding queryParameterBinding,
-                                   PreparedQuery<?, ?> preparedQuery,
-                                   RuntimePersistentEntity<T> persistentEntity,
-                                   CodecRegistry codecRegistry) {
+    private <T> BsonValue getValue(int index, QueryParameterBinding queryParameterBinding, PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity, CodecRegistry codecRegistry) {
         Class<?> parameterConverter = queryParameterBinding.getParameterConverterClass();
         Object value;
         if (queryParameterBinding.getParameterIndex() != -1) {
@@ -334,7 +309,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 previousValue = resolveParameterValue(previousPopulatedValueParameter, preparedQuery.getParameterArray());
             }
             value = runtimeEntityRegistry.autoPopulateRuntimeProperty(persistentProperty, previousValue);
-//                value = context.convert(connection, value, persistentProperty);
+            value = convert(value, persistentProperty);
             parameterConverter = null;
         } else {
             throw new IllegalStateException("Invalid query [" + "]. Unable to establish parameter value for parameter at position: " + (index + 1));
@@ -351,7 +326,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             if (parameterConverter != null) {
                 int parameterIndex = queryParameterBinding.getParameterIndex();
                 Argument<?> argument = parameterIndex > -1 ? preparedQuery.getArguments()[parameterIndex] : null;
-//                    value = context.convert(parameterConverter, connection, value, argument);
+                value = convert(parameterConverter, value, argument);
             }
             if (value instanceof String) {
                 PersistentPropertyPath pp = getRequiredPropertyPath(queryParameterBinding, persistentEntity);
@@ -369,23 +344,33 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             }
             return Utils.toBsonValue(conversionService, value, codecRegistry);
         } else {
-            return new BsonArray(
-                    values.stream().map(val -> Utils.toBsonValue(conversionService, val, codecRegistry)).collect(Collectors.toList())
-            );
-//            Iterator<Object> iterator = values.iterator();
-//            while (iterator.hasNext()) {
-//                if (parameterConverter != null) {
-//                    int parameterIndex = queryParameterBinding.getParameterIndex();
-//                    Argument<?> argument = parameterIndex > -1 ? preparedQuery.getArguments()[parameterIndex] : null;
-////                        v = context.convert(parameterConverter, connection, v, argument);
-//                }
-//                appendValue(q, iterator.next());
-//                if (iterator.hasNext()) {
-//                    q.append(", ");
-//                }
-////                    context.setStatementParameter(stmt, index++, dataType, v, dialect);
-//            }
+            Class<?> finalParameterConverter = parameterConverter;
+            return new BsonArray(values.stream().map(val -> {
+                if (finalParameterConverter != null) {
+                    int parameterIndex = queryParameterBinding.getParameterIndex();
+                    Argument<?> argument = parameterIndex > -1 ? preparedQuery.getArguments()[parameterIndex] : null;
+                    val = convert(finalParameterConverter, val, argument);
+                }
+                return Utils.toBsonValue(conversionService, val, codecRegistry);
+            }).collect(Collectors.toList()));
         }
+    }
+
+    private Object convert(Class<?> converterClass, Object value, @Nullable Argument<?> argument) {
+        if (converterClass == null) {
+            return value;
+        }
+        AttributeConverter<Object, Object> converter = attributeConverterRegistry.getConverter(converterClass);
+        ConversionContext conversionContext = createTypeConversionContext(null, null, argument);
+        return converter.convertToPersistedValue(value, conversionContext);
+    }
+
+    private Object convert(Object value, RuntimePersistentProperty<?> property) {
+        AttributeConverter<Object, Object> converter = property.getConverter();
+        if (converter != null) {
+            return converter.convertToPersistedValue(value, createTypeConversionContext(null, property, property.getArgument()));
+        }
+        return value;
     }
 
     private <T> PersistentPropertyPath getRequiredPropertyPath(QueryParameterBinding queryParameterBinding, RuntimePersistentEntity<T> persistentEntity) {
@@ -481,9 +466,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                     limit = pageable.getSize();
                     Sort pageableSort = pageable.getSort();
                     if (pageableSort.isSorted()) {
-                        sort = pageableSort.getOrderBy().stream()
-                                .map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty()))
-                                .collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
+                        sort = pageableSort.getOrderBy().stream().map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty())).collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
 
 
                     }
@@ -494,12 +477,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'find' with filter: {} skip: {} limit: {}", filter.toBsonDocument().toJson(), skip, limit);
                 }
-                return getCollection(database, persistentEntity, resultType)
-                        .find(clientSession, filter, resultType)
-                        .skip(skip)
-                        .limit(Math.max(limit, 0))
-                        .sort(sort)
-                        .into(new ArrayList<>(limit > 0 ? limit : 20));
+                return getCollection(database, persistentEntity, resultType).find(clientSession, filter, resultType).skip(skip).limit(Math.max(limit, 0)).sort(sort).into(new ArrayList<>(limit > 0 ? limit : 20));
             }
             boolean isSingleResult = false;
             int limit = 0;
@@ -511,9 +489,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 limit = pageable.getSize();
                 Sort pageableSort = pageable.getSort();
                 if (pageableSort.isSorted()) {
-                    Bson sort = pageableSort.getOrderBy().stream()
-                            .map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty()))
-                            .collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
+                    Bson sort = pageableSort.getOrderBy().stream().map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty())).collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
                     addStageToPipelineBefore(pipeline, sort.toBsonDocument(), "$limit", "$skip");
                 }
                 if (skip > 0) {
@@ -526,9 +502,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
             }
-            return getCollection(database, persistentEntity, resultType)
-                    .aggregate(clientSession, pipeline, resultType)
-                    .into(new ArrayList<>(limit > 0 ? limit : 20));
+            return getCollection(database, persistentEntity, resultType).aggregate(clientSession, pipeline, resultType).into(new ArrayList<>(limit > 0 ? limit : 20));
         }
     }
 
@@ -543,10 +517,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
             }
-            R result = getCollection(mongoDatabase, persistentEntity, type)
-                    .aggregate(clientSession, pipeline, BsonDocument.class)
-                    .map(bsonDocument -> convertResult(resultType, bsonDocument))
-                    .first();
+            R result = getCollection(mongoDatabase, persistentEntity, type).aggregate(clientSession, pipeline, BsonDocument.class).map(bsonDocument -> convertResult(resultType, bsonDocument)).first();
             if (result == null) {
                 result = conversionService.convertRequired(0, resultType);
             }
@@ -643,9 +614,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             MongoDatabase mongoDatabase = getDatabase();
             if (operation.all()) {
                 RuntimePersistentEntity<T> persistentEntity = runtimeEntityRegistry.getEntity(operation.getRootEntity());
-                long deletedCount = getCollection(mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType())
-                        .deleteMany(EMPTY)
-                        .getDeletedCount();
+                long deletedCount = getCollection(mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType()).deleteMany(EMPTY).getDeletedCount();
                 return Optional.of(deletedCount);
             }
             MongoDbOperationContext ctx = new MongoDbOperationContext(clientSession, mongoDatabase, operation.getAnnotationMetadata(), operation.getRepositoryType());
@@ -666,8 +635,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing Mongo 'updateMany' with filter: {} and update: {}", filter.toBsonDocument().toJson(), update.toBsonDocument().toJson());
             }
-            UpdateResult updateResult = getCollection(database, persistentEntity, persistentEntity.getIntrospection().getBeanType())
-                    .updateMany(clientSession, filter, update);
+            UpdateResult updateResult = getCollection(database, persistentEntity, persistentEntity.getIntrospection().getBeanType()).updateMany(clientSession, filter, update);
             if (preparedQuery.isOptimisticLock()) {
                 checkOptimisticLocking(1, (int) updateResult.getModifiedCount());
             }
@@ -684,8 +652,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing Mongo 'deleteMany' with filter: {}", filter.toBsonDocument().toJson());
             }
-            DeleteResult deleteResult = getCollection(database, persistentEntity, persistentEntity.getIntrospection().getBeanType())
-                    .deleteMany(clientSession, filter);
+            DeleteResult deleteResult = getCollection(database, persistentEntity, persistentEntity.getIntrospection().getBeanType()).deleteMany(clientSession, filter);
             if (preparedQuery.isOptimisticLock()) {
                 checkOptimisticLocking(1, (int) deleteResult.getDeletedCount());
             }
@@ -695,7 +662,10 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
     @Override
     protected ConversionContext createTypeConversionContext(ClientSession connection, RuntimePersistentProperty<?> property, Argument<?> argument) {
-        return null;
+        if (argument != null) {
+            return ConversionContext.of(argument);
+        }
+        return ConversionContext.DEFAULT;
     }
 
     @Override
@@ -792,8 +762,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 }
                 BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(entity, getDatabase().getCodecRegistry());
                 bsonDocument.remove("_id");
-                UpdateResult updateResult = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class)
-                        .replaceOne(ctx.clientSession, filter, bsonDocument);
+                UpdateResult updateResult = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class).replaceOne(ctx.clientSession, filter, bsonDocument);
                 modifiedCount = updateResult.getModifiedCount();
                 if (persistentEntity.getVersion() != null) {
                     checkOptimisticLocking(1, (int) modifiedCount);
@@ -809,8 +778,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
             @Override
             protected void collectAutoPopulatedPreviousValues() {
-                filters = entities.stream()
-                        .collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity)));
+                filters = entities.stream().collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity)));
             }
 
             @Override
@@ -827,8 +795,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                     }
                     BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(d.entity, getDatabase().getCodecRegistry());
                     bsonDocument.remove("_id");
-                    UpdateResult updateResult = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class)
-                            .replaceOne(ctx.clientSession, filter, bsonDocument);
+                    UpdateResult updateResult = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class).replaceOne(ctx.clientSession, filter, bsonDocument);
                     modifiedCount += updateResult.getModifiedCount();
                 }
                 if (persistentEntity.getVersion() != null) {
@@ -870,21 +837,16 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
             @Override
             protected void collectAutoPopulatedPreviousValues() {
-                filters = entities.stream()
-                        .collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity)));
+                filters = entities.stream().collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity)));
             }
 
             @Override
             protected void execute() throws RuntimeException {
-                Bson filter = entities.stream()
-                        .filter(d -> !d.vetoed)
-                        .map(d -> filters.get(d))
-                        .collect(Collectors.collectingAndThen(Collectors.toList(), Filters::or));
+                Bson filter = entities.stream().filter(d -> !d.vetoed).map(d -> filters.get(d)).collect(Collectors.collectingAndThen(Collectors.toList(), Filters::or));
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'deleteMany' with filter: {}", filter.toBsonDocument().toJson());
                 }
-                DeleteResult deleteResult = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType())
-                        .deleteMany(ctx.clientSession, filter);
+                DeleteResult deleteResult = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType()).deleteMany(ctx.clientSession, filter);
                 modifiedCount = deleteResult.getDeletedCount();
                 if (persistentEntity.getVersion() != null) {
                     int expected = (int) entities.stream().filter(d -> !d.vetoed).count();
@@ -903,8 +865,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'insertMany' with entities: {}", toInsert);
                 }
-                InsertManyResult insertManyResult = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType())
-                        .insertMany(toInsert);
+                InsertManyResult insertManyResult = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType()).insertMany(toInsert);
                 if (hasGeneratedId) {
                     Map<Integer, BsonValue> insertedIds = insertManyResult.getInsertedIds();
                     RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
@@ -937,13 +898,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
          * @param entity
          */
         protected MongoDbEntityOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, T entity, boolean insert) {
-            super(ctx,
-                    DefaultMongoDbRepositoryOperations.this.cascadeOperations,
-                    DefaultMongoDbRepositoryOperations.this.entityEventRegistry,
-                    persistentEntity,
-                    DefaultMongoDbRepositoryOperations.this.conversionService,
-                    entity,
-                    insert);
+            super(ctx, DefaultMongoDbRepositoryOperations.this.cascadeOperations, DefaultMongoDbRepositoryOperations.this.entityEventRegistry, persistentEntity, DefaultMongoDbRepositoryOperations.this.conversionService, entity, insert);
         }
 
         @Override
@@ -956,13 +911,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         protected long modifiedCount;
 
         protected MongoDbEntitiesOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, Iterable<T> entities, boolean insert) {
-            super(ctx,
-                    DefaultMongoDbRepositoryOperations.this.cascadeOperations,
-                    DefaultMongoDbRepositoryOperations.this.conversionService,
-                    DefaultMongoDbRepositoryOperations.this.entityEventRegistry,
-                    persistentEntity,
-                    entities,
-                    insert);
+            super(ctx, DefaultMongoDbRepositoryOperations.this.cascadeOperations, DefaultMongoDbRepositoryOperations.this.conversionService, DefaultMongoDbRepositoryOperations.this.entityEventRegistry, persistentEntity, entities, insert);
         }
 
         @Override

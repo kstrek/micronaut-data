@@ -14,6 +14,7 @@ import io.micronaut.data.document.tck.repositories.AuthorRepository
 import io.micronaut.data.document.tck.repositories.BasicTypesRepository
 import io.micronaut.data.document.tck.repositories.BookRepository
 import io.micronaut.data.document.tck.repositories.PersonRepository
+import io.micronaut.data.document.tck.repositories.SaleRepository
 import io.micronaut.data.document.tck.repositories.StudentRepository
 import io.micronaut.data.exceptions.OptimisticLockException
 import io.micronaut.data.model.Pageable
@@ -44,6 +45,8 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
     abstract AuthorRepository getAuthorRepository()
 
     abstract StudentRepository getStudentRepository()
+
+    abstract SaleRepository getSaleRepository()
 
     abstract Map<String, String> getProperties()
 
@@ -932,6 +935,5 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
             deleted == 1
             personRepository.count(nameEquals("Xyz")) == 0
     }
-
 
 }

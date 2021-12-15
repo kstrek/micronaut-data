@@ -7,6 +7,7 @@ import io.micronaut.core.type.Argument;
 import io.micronaut.data.document.serde.IdSerializer;
 import io.micronaut.data.document.serde.ManyRelationSerializer;
 import io.micronaut.data.document.serde.OneRelationSerializer;
+import io.micronaut.data.model.runtime.AttributeConverterRegistry;
 import io.micronaut.data.model.runtime.RuntimeEntityRegistry;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.serde.DefaultSerdeRegistry;
@@ -28,23 +29,26 @@ import java.io.IOException;
 public class DataSerdeRegistry extends DefaultSerdeRegistry {
 
     private final RuntimeEntityRegistry runtimeEntityRegistry;
+    private final AttributeConverterRegistry attributeConverterRegistry;
 
     public DataSerdeRegistry(BeanContext beanContext,
                              ObjectSerializer objectSerializer,
                              ObjectDeserializer objectDeserializer,
                              Serde<Object[]> objectArraySerde,
                              SerdeIntrospections introspections,
-                             RuntimeEntityRegistry runtimeEntityRegistry) {
+                             RuntimeEntityRegistry runtimeEntityRegistry,
+                             AttributeConverterRegistry attributeConverterRegistry) {
         super(beanContext, objectSerializer, objectDeserializer, objectArraySerde, introspections);
         this.runtimeEntityRegistry = runtimeEntityRegistry;
+        this.attributeConverterRegistry = attributeConverterRegistry;
     }
 
     public Serializer.EncoderContext newEncoderContext(Class<?> view, RuntimePersistentEntity<?> runtimePersistentEntity, CodecRegistry codecRegistry) {
-        return new DataEncoderContext((RuntimePersistentEntity<Object>) runtimePersistentEntity, super.newEncoderContext(view), codecRegistry);
+        return new DataEncoderContext(attributeConverterRegistry, (RuntimePersistentEntity<Object>) runtimePersistentEntity, super.newEncoderContext(view), codecRegistry);
     }
 
     public Deserializer.DecoderContext newDecoderContext(Class<?> view, RuntimePersistentEntity<?> runtimePersistentEntity, CodecRegistry codecRegistry) {
-        return new DataDecoderContext((RuntimePersistentEntity<Object>) runtimePersistentEntity, super.newDecoderContext(view), codecRegistry);
+        return new DataDecoderContext(attributeConverterRegistry, (RuntimePersistentEntity<Object>) runtimePersistentEntity, super.newDecoderContext(view), codecRegistry);
     }
 
     @Override

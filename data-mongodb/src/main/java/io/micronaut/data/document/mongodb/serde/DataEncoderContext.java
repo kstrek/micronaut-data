@@ -1,10 +1,15 @@
 package io.micronaut.data.document.mongodb.serde;
 
+import io.micronaut.core.convert.ConversionContext;
 import io.micronaut.core.convert.ConversionService;
 import io.micronaut.core.type.Argument;
 import io.micronaut.data.annotation.GeneratedValue;
+import io.micronaut.data.annotation.MappedProperty;
+import io.micronaut.data.document.serde.CustomConverterSerializer;
 import io.micronaut.data.document.serde.IdSerializer;
+import io.micronaut.data.model.runtime.AttributeConverterRegistry;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
+import io.micronaut.data.model.runtime.convert.AttributeConverter;
 import io.micronaut.serde.Encoder;
 import io.micronaut.serde.Serializer;
 import io.micronaut.serde.bson.custom.CodecBsonDecoder;
@@ -22,11 +27,16 @@ public class DataEncoderContext implements Serializer.EncoderContext {
 
     private final Argument<ObjectId> OBJECT_ID = Argument.of(ObjectId.class);
 
+    private final AttributeConverterRegistry attributeConverterRegistry;
     private final RuntimePersistentEntity<Object> runtimePersistentEntity;
     private final Serializer.EncoderContext parent;
     private final CodecRegistry codecRegistry;
 
-    public DataEncoderContext(RuntimePersistentEntity<Object> runtimePersistentEntity, Serializer.EncoderContext parent, CodecRegistry codecRegistry) {
+    public DataEncoderContext(AttributeConverterRegistry attributeConverterRegistry,
+                              RuntimePersistentEntity<Object> runtimePersistentEntity,
+                              Serializer.EncoderContext parent,
+                              CodecRegistry codecRegistry) {
+        this.attributeConverterRegistry = attributeConverterRegistry;
         this.runtimePersistentEntity = runtimePersistentEntity;
         this.parent = parent;
         this.codecRegistry = codecRegistry;
@@ -70,6 +80,41 @@ public class DataEncoderContext implements Serializer.EncoderContext {
                 }
             };
             return (D) idSerializer;
+        }
+        if (serializerClass == CustomConverterSerializer.class) {
+            CustomConverterSerializer customConverterSerializer = new CustomConverterSerializer() {
+                @Override
+                public Serializer<Object> createSpecific(Argument<?> type, EncoderContext encoderContext) throws SerdeException {
+                    Class<?> converterClass = type.getAnnotationMetadata().classValue(MappedProperty.class, "converter").get();
+                    Class<Object> converterPersistedType = type.getAnnotationMetadata().classValue(MappedProperty.class, "converterPersistedType").get();
+                    Argument<Object> convertedType = Argument.of(converterPersistedType);
+                    Serializer<? super Object> serializer = findSerializer(convertedType);
+                    AttributeConverter<Object, Object> converter = attributeConverterRegistry.getConverter(converterClass);
+                    return new Serializer<Object>() {
+
+                        @Override
+                        public void serialize(Encoder encoder, EncoderContext context, Object value, Argument<?> type) throws IOException {
+                            if (value == null) {
+                                encoder.encodeNull();
+                                return;
+                            }
+                            Object converted = converter.convertToPersistedValue(value, ConversionContext.of(type));
+                            if (converted == null) {
+                                encoder.encodeNull();
+                                return;
+                            }
+                            serializer.serialize(encoder, context, converted, convertedType);
+                        }
+
+                    };
+                }
+
+                @Override
+                public void serialize(Encoder encoder, EncoderContext context, Object value, Argument<?> type) throws IOException {
+                    throw new IllegalStateException("Create specific call is required!");
+                }
+            };
+            return (D) customConverterSerializer;
         }
         return parent.findCustomSerializer(serializerClass);
     }
