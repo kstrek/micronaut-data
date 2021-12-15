@@ -12,6 +12,7 @@ import org.bson.BsonWriter;
 import org.bson.codecs.Codec;
 import org.bson.codecs.DecoderContext;
 import org.bson.codecs.EncoderContext;
+import org.bson.codecs.configuration.CodecRegistry;
 
 import java.io.IOException;
 
@@ -23,12 +24,14 @@ public class DataCodec<T> implements Codec<T> {
     private final Argument<T> argument;
     private final Serializer<? super T> serializer;
     private final Deserializer<? extends T> deserializer;
+    private final CodecRegistry codecRegistry;
 
-    public DataCodec(DataSerdeRegistry dataSerdeRegistry, RuntimePersistentEntity<T> persistentEntity, Class<T> type) {
+    public DataCodec(DataSerdeRegistry dataSerdeRegistry, RuntimePersistentEntity<T> persistentEntity, Class<T> type, CodecRegistry codecRegistry) {
         this.dataSerdeRegistry = dataSerdeRegistry;
         this.persistentEntity = persistentEntity;
         this.type = type;
         this.argument = Argument.of(type);
+        this.codecRegistry = codecRegistry;
         try {
             this.serializer = dataSerdeRegistry.findSerializer(argument);
             this.deserializer = dataSerdeRegistry.findDeserializer(argument);
@@ -40,7 +43,7 @@ public class DataCodec<T> implements Codec<T> {
     @Override
     public T decode(BsonReader reader, DecoderContext decoderContext) {
         try {
-            T deserialize = deserializer.deserialize(new BsonReaderDecoder(reader), dataSerdeRegistry.newDecoderContext(type), argument);
+            T deserialize = deserializer.deserialize(new BsonReaderDecoder(reader), dataSerdeRegistry.newDecoderContext(type, persistentEntity, codecRegistry), argument);
             return deserialize;
         } catch (IOException e) {
             throw new DataAccessException("Cannot deserialize: " + type, e);
@@ -50,8 +53,7 @@ public class DataCodec<T> implements Codec<T> {
     @Override
     public void encode(BsonWriter writer, T value, EncoderContext encoderContext) {
         try {
-            System.out.println("ENCODING: " + value);
-            serializer.serialize(new BsonWriterEncoder(writer, false), dataSerdeRegistry.newEncoderContext(type, (RuntimePersistentEntity<Object>) persistentEntity), value, argument);
+            serializer.serialize(new BsonWriterEncoder(writer), dataSerdeRegistry.newEncoderContext(type, persistentEntity, codecRegistry), value, argument);
         } catch (IOException e) {
             throw new DataAccessException("Cannot serialize: " + value, e);
         }

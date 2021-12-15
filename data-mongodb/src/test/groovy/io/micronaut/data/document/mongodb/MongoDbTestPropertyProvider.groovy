@@ -19,6 +19,7 @@ trait MongoDbTestPropertyProvider implements TestPropertyProvider {
         def mongo = TestContainerHolder.getContainerOrCreate()
         mongo.start()
         return [
+                'mongodb.automaticClassModels': false,
                 'mongodb.uri': mongo.replicaSetUrl,
                 'mongodb.uuid-representation': UuidRepresentation.STANDARD
         ]

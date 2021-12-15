@@ -2,20 +2,34 @@ package io.micronaut.data.document.mongodb.serde;
 
 import io.micronaut.core.convert.ConversionService;
 import io.micronaut.core.type.Argument;
+import io.micronaut.data.annotation.GeneratedValue;
+import io.micronaut.data.document.serde.IdSerializer;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
+import io.micronaut.serde.Encoder;
 import io.micronaut.serde.Serializer;
+import io.micronaut.serde.bson.custom.CodecBsonDecoder;
 import io.micronaut.serde.exceptions.SerdeException;
 import io.micronaut.serde.reference.PropertyReference;
 import io.micronaut.serde.reference.SerializationReference;
+import org.bson.codecs.Codec;
+import org.bson.codecs.IterableCodec;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.types.ObjectId;
+
+import java.io.IOException;
 
 public class DataEncoderContext implements Serializer.EncoderContext {
 
+    private final Argument<ObjectId> OBJECT_ID = Argument.of(ObjectId.class);
+
     private final RuntimePersistentEntity<Object> runtimePersistentEntity;
     private final Serializer.EncoderContext parent;
+    private final CodecRegistry codecRegistry;
 
-    public DataEncoderContext(RuntimePersistentEntity<Object> runtimePersistentEntity, Serializer.EncoderContext parent) {
+    public DataEncoderContext(RuntimePersistentEntity<Object> runtimePersistentEntity, Serializer.EncoderContext parent, CodecRegistry codecRegistry) {
         this.runtimePersistentEntity = runtimePersistentEntity;
         this.parent = parent;
+        this.codecRegistry = codecRegistry;
     }
 
     @Override
@@ -35,17 +49,40 @@ public class DataEncoderContext implements Serializer.EncoderContext {
 
     @Override
     public <T, D extends Serializer<? extends T>> D findCustomSerializer(Class<? extends D> serializerClass) throws SerdeException {
+        if (serializerClass == IdSerializer.class) {
+            Serializer<? super ObjectId> objectIdSerializer = findSerializer(OBJECT_ID);
+            IdSerializer idSerializer = new IdSerializer() {
+
+                @Override
+                public Serializer<Object> createSpecific(Argument<?> type, EncoderContext encoderContext) throws SerdeException {
+                    if (type.getType() == String.class && type.isAnnotationPresent(GeneratedValue.class)) {
+                        return (encoder, encoderContext2, value, stringType) -> {
+                            String stringId = (String) value;
+                            objectIdSerializer.serialize(encoder, encoderContext2, new ObjectId(stringId), OBJECT_ID);
+                        };
+                    }
+                    return (Serializer<Object>) findSerializer(type);
+                }
+
+                @Override
+                public void serialize(Encoder encoder, EncoderContext context, Object value, Argument<?> type) throws IOException {
+                    throw new IllegalStateException("Create specific call is required!");
+                }
+            };
+            return (D) idSerializer;
+        }
         return parent.findCustomSerializer(serializerClass);
     }
 
     @Override
-    public <T> Serializer<? super T> findSerializer(Argument<? extends T> forType) throws SerdeException {
-        return parent.findSerializer(forType);
-    }
+    public <T> Serializer<? super T> findSerializer(Argument<? extends T> type) throws SerdeException {
+        Codec<? extends T> codec = codecRegistry.get(type.getType(), codecRegistry);
+        if (codec != null && !(codec instanceof IterableCodec)) {
+            return new CodecBsonDecoder<T>((Codec<T>) codec) {
 
-    @Override
-    public <T> Serializer<? super T> findSerializer(Class<? extends T> forType) throws SerdeException {
-        return parent.findSerializer(forType);
+            };
+        }
+        return parent.findSerializer(type);
     }
 
     @Override

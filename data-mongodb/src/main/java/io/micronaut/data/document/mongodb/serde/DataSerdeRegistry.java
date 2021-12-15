@@ -3,10 +3,8 @@ package io.micronaut.data.document.mongodb.serde;
 import io.micronaut.context.BeanContext;
 import io.micronaut.context.annotation.Replaces;
 import io.micronaut.core.beans.BeanIntrospection;
-import io.micronaut.core.beans.BeanIntrospector;
 import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.core.type.Argument;
-import io.micronaut.data.annotation.MappedEntity;
 import io.micronaut.data.document.serde.ManyRelationSerializer;
 import io.micronaut.data.document.serde.OneRelationDeserializer;
 import io.micronaut.data.document.serde.OneRelationSerializer;
@@ -24,13 +22,14 @@ import io.micronaut.serde.deserializers.ObjectDeserializer;
 import io.micronaut.serde.exceptions.SerdeException;
 import io.micronaut.serde.serializers.ObjectSerializer;
 import io.micronaut.serde.util.TypeKey;
+import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
+import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.types.ObjectId;
 
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Singleton
@@ -38,21 +37,28 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DataSerdeRegistry extends DefaultSerdeRegistry {
 
     private final RuntimeEntityRegistry runtimeEntityRegistry;
+    private final Provider<MainCodecRegistry> codecRegistries;
     private final Map<TypeKey, Serializer<?>> serializerMap = new ConcurrentHashMap<>(50);
-    private final Map<TypeKey, Serializer<?>> deserializerMap = new ConcurrentHashMap<>(50);
+    private final Map<TypeKey, Deserializer<?>> deserializerMap = new ConcurrentHashMap<>(50);
 
     public DataSerdeRegistry(BeanContext beanContext,
                              ObjectSerializer objectSerializer,
                              ObjectDeserializer objectDeserializer,
                              Serde<Object[]> objectArraySerde,
                              SerdeIntrospections introspections,
-                             RuntimeEntityRegistry runtimeEntityRegistry) {
+                             RuntimeEntityRegistry runtimeEntityRegistry,
+                             Provider<MainCodecRegistry> codecRegistries) {
         super(beanContext, objectSerializer, objectDeserializer, objectArraySerde, introspections);
         this.runtimeEntityRegistry = runtimeEntityRegistry;
+        this.codecRegistries = codecRegistries;
     }
 
-    public Serializer.EncoderContext newEncoderContext(Class<?> view, RuntimePersistentEntity<Object> runtimePersistentEntity) {
-        return new DataEncoderContext(runtimePersistentEntity, super.newEncoderContext(view));
+    public Serializer.EncoderContext newEncoderContext(Class<?> view, RuntimePersistentEntity<?> runtimePersistentEntity, CodecRegistry codecRegistry) {
+        return new DataEncoderContext((RuntimePersistentEntity<Object>) runtimePersistentEntity, super.newEncoderContext(view), codecRegistry);
+    }
+
+    public Deserializer.DecoderContext newDecoderContext(Class<?> view, RuntimePersistentEntity<?> runtimePersistentEntity, CodecRegistry codecRegistry) {
+        return new DataDecoderContext((RuntimePersistentEntity<Object>) runtimePersistentEntity, super.newDecoderContext(view), codecRegistry);
     }
 
     @Override
@@ -89,15 +95,21 @@ public class DataSerdeRegistry extends DefaultSerdeRegistry {
         return super.findCustomDeserializer(deserializerClass);
     }
 
-    @Override
-    public <T> Deserializer<? extends T> findDeserializer(Argument<? extends T> type) {
-        return super.findDeserializer(type);
-    }
-
-    @Override
-    public <T> Deserializer<? extends T> findDeserializer(Class<? extends T> type) throws SerdeException {
-        return super.findDeserializer(type);
-    }
+//    @Override
+//    public <T> Deserializer<? extends T> findDeserializer(Argument<? extends T> type) {
+//        return (Deserializer<? extends T>) deserializerMap.computeIfAbsent(new TypeKey(type), typeKey -> {
+//            Deserializer<? extends T> des;
+//            try {
+//                des = null;
+////                Codec<? extends T> codec = codecRegistry.get().get(type.getType());
+////                des = new CodecBsonDecoder(codec) {
+////                };
+//            } catch (CodecConfigurationException e) {
+//                des = super.findDeserializer(type);
+//            }
+//            return des;
+//        });
+//    }
 
     @Override
     public <T> Collection<BeanIntrospection<? extends T>> getDeserializableSubtypes(Class<T> superType) {
@@ -145,17 +157,25 @@ public class DataSerdeRegistry extends DefaultSerdeRegistry {
         return super.findCustomSerializer(serializerClass);
     }
 
-    @Override
-    public <T> Serializer<? super T> findSerializer(Argument<? extends T> forType) throws SerdeException {
-        Class<? extends T> type = forType.getType();
-        Optional<? extends BeanIntrospection<? extends T>> introspection = BeanIntrospector.SHARED.findIntrospection(type);
-        if (introspection.isPresent()) {
-            if (introspection.get().isAnnotationPresent(MappedEntity.class)) {
-
-            }
-        }
-        return super.findSerializer(forType);
-    }
+//    @Override
+//    public <T> Serializer<? super T> findSerializer(Argument<? extends T> type) throws SerdeException {
+//        TypeKey key = new TypeKey(type);
+//        Serializer<? super T> serializer = (Serializer<? super T>) serializerMap.get(key);
+//        if (serializer != null) {
+//            return serializer;
+//        }
+//        Serializer<? super T> ser;
+//        try {
+////            Codec<? extends T> codec = codecRegistry.get().get(type.getType());
+////            ser = new CodecBsonDecoder(codec) {
+////            };
+//            ser = null;
+//        } catch (CodecConfigurationException e) {
+//            ser = super.findSerializer(type);
+//        }
+//        serializerMap.put(key, ser);
+//        return ser;
+//    }
 
     @Override
     public <T> Serializer<? super T> findSerializer(Class<? extends T> forType) throws SerdeException {
