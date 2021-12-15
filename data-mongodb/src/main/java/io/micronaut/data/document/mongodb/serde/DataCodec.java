@@ -50,6 +50,7 @@ public class DataCodec<T> implements Codec<T> {
     @Override
     public void encode(BsonWriter writer, T value, EncoderContext encoderContext) {
         try {
+            System.out.println("ENCODING: " + value);
             serializer.serialize(new BsonWriterEncoder(writer, false), dataSerdeRegistry.newEncoderContext(type, (RuntimePersistentEntity<Object>) persistentEntity), value, argument);
         } catch (IOException e) {
             throw new DataAccessException("Cannot serialize: " + value, e);

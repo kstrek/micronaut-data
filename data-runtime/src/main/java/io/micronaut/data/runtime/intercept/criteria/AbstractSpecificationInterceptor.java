@@ -156,6 +156,7 @@ public abstract class AbstractSpecificationInterceptor<T, R> extends AbstractQue
         }
 
         String query = queryResult.getQuery();
+        String update = queryResult.getUpdate();
         List<io.micronaut.data.model.query.builder.QueryParameterBinding> parameterBindings = queryResult.getParameterBindings();
 
         List<QueryParameterBinding> queryParameters = new ArrayList<>(parameterBindings.size());
@@ -173,14 +174,15 @@ public abstract class AbstractSpecificationInterceptor<T, R> extends AbstractQue
         } else if (type == Type.FIND_ALL) {
             storedQuery = createFindAllStoredQuery(context, rootEntity, query, queryParts, queryParameters, !pageable.isUnpaged());
         } else {
-            storedQuery = createFindOneStoredQuery(context, rootEntity, query, queryParts, queryParameters);
+            storedQuery = createFindOneStoredQuery(context, rootEntity, query, update, queryParts, queryParameters);
         }
-        return new DefaultPreparedQuery<E, QR>(context, storedQuery, query, pageable, false);
+        return preparedQueryResolver.resolveQuery(context, storedQuery, pageable);
     }
 
     private <E, QR> StoredQuery<E, QR> createFindOneStoredQuery(MethodInvocationContext<T, R> context,
                                                                 Class<Object> rootEntity,
                                                                 String query,
+                                                                String update,
                                                                 String[] queryParts,
                                                                 List<QueryParameterBinding> queryParameters) {
         return new StoredQuery<E, QR>() {
@@ -197,6 +199,11 @@ public abstract class AbstractSpecificationInterceptor<T, R> extends AbstractQue
             @Override
             public String getQuery() {
                 return query;
+            }
+
+            @Override
+            public String getUpdate() {
+                return update;
             }
 
             @Override

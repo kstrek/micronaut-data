@@ -8,6 +8,8 @@ import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.RuntimePersistentProperty;
 import io.micronaut.serde.config.annotation.SerdeConfig;
+import org.bson.BsonDocument;
+import org.bson.BsonDocumentWrapper;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
 import org.bson.BsonNull;
@@ -15,6 +17,7 @@ import org.bson.BsonObjectId;
 import org.bson.BsonString;
 import org.bson.BsonType;
 import org.bson.BsonValue;
+import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.annotations.BsonRepresentation;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
@@ -79,7 +82,7 @@ final class Utils {
         }
     }
 
-    static BsonValue toBsonValue(ConversionService<?> conversionService, Object value) {
+    static BsonValue toBsonValue(ConversionService<?> conversionService, Object value, CodecRegistry codecRegistry) {
         if (value == null) {
             return BsonNull.VALUE;
         }
@@ -95,7 +98,8 @@ final class Utils {
         if (value instanceof ObjectId) {
             return new BsonObjectId((ObjectId) value);
         }
-        return BsonNull.VALUE;
+        BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(value, codecRegistry).toBsonDocument();
+        return bsonDocument;
 //        throw new IllegalStateException("Not implemented for: " + value);
     }
 
