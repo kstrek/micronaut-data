@@ -25,7 +25,7 @@ import org.bson.types.ObjectId;
 import java.util.Date;
 
 @Internal
-final class Utils {
+public final class Utils {
 
     static Bson filterById(ConversionService<?> conversionService,
                            RuntimePersistentEntity<?> persistentEntity,
@@ -82,7 +82,7 @@ final class Utils {
         }
     }
 
-    static BsonValue toBsonValue(ConversionService<?> conversionService, Object value, CodecRegistry codecRegistry) {
+    public static BsonValue toBsonValue(ConversionService<?> conversionService, Object value, CodecRegistry codecRegistry) {
         if (value == null) {
             return BsonNull.VALUE;
         }

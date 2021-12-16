@@ -61,11 +61,13 @@ public class DataEncoderContext implements Serializer.EncoderContext {
     public <T, D extends Serializer<? extends T>> D findCustomSerializer(Class<? extends D> serializerClass) throws SerdeException {
         if (serializerClass == IdSerializer.class) {
             Serializer<? super ObjectId> objectIdSerializer = findSerializer(OBJECT_ID);
+            boolean isGeneratedObjectIdAsString = runtimePersistentEntity.getIdentity().getType().isAssignableFrom(String.class)
+                    && runtimePersistentEntity.getIdentity().isAnnotationPresent(GeneratedValue.class);
             IdSerializer idSerializer = new IdSerializer() {
 
                 @Override
                 public Serializer<Object> createSpecific(Argument<?> type, EncoderContext encoderContext) throws SerdeException {
-                    if (type.getType() == String.class && type.isAnnotationPresent(GeneratedValue.class)) {
+                    if (isGeneratedObjectIdAsString) {
                         return (encoder, encoderContext2, value, stringType) -> {
                             String stringId = (String) value;
                             objectIdSerializer.serialize(encoder, encoderContext2, new ObjectId(stringId), OBJECT_ID);
@@ -75,7 +77,7 @@ public class DataEncoderContext implements Serializer.EncoderContext {
                 }
 
                 @Override
-                public void serialize(Encoder encoder, EncoderContext context, Object value, Argument<?> type) throws IOException {
+                public void serialize(Encoder encoder, EncoderContext context, Object value, Argument<?> type) {
                     throw new IllegalStateException("Create specific call is required!");
                 }
             };
@@ -110,7 +112,7 @@ public class DataEncoderContext implements Serializer.EncoderContext {
                 }
 
                 @Override
-                public void serialize(Encoder encoder, EncoderContext context, Object value, Argument<?> type) throws IOException {
+                public void serialize(Encoder encoder, EncoderContext context, Object value, Argument<?> type) {
                     throw new IllegalStateException("Create specific call is required!");
                 }
             };

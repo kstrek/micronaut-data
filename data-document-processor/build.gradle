@@ -9,9 +9,9 @@ configurations.all {
 }
 
 dependencies {
-	implementation projects.dataProcessor
-	implementation libs.micronaut.serde.processor
-	implementation libs.micronaut.serde.api
-	implementation projects.dataDocumentModel
+	api projects.dataProcessor
+	api libs.micronaut.serde.processor
+	api libs.micronaut.serde.api
+	api projects.dataDocumentModel
 	compileOnly mn.micronaut.inject.java
 }

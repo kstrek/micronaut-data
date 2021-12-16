@@ -4,7 +4,7 @@ package io.micronaut.data.document.mongodb
 import io.micronaut.test.support.TestPropertyProvider
 import org.bson.UuidRepresentation
 
-trait MongoDbTestPropertyProvider implements TestPropertyProvider {
+trait MongoTestPropertyProvider implements TestPropertyProvider {
 
     int sharedSpecsCount() {
         return 1

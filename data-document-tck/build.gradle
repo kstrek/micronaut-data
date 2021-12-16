@@ -1,9 +1,9 @@
 dependencies {
-    annotationProcessor "io.micronaut:micronaut-inject-java"
+    annotationProcessor mn.micronaut.inject.java
     annotationProcessor projects.dataDocumentProcessor
 
-    compileOnly "io.micronaut:micronaut-inject-groovy"
-    implementation project(":data-model")
+    compileOnly mn.micronaut.inject.groovy
+    implementation projects.dataModel
     implementation "io.projectreactor:reactor-core"
 
     implementation "io.micronaut.test:micronaut-test-spock"

@@ -224,15 +224,14 @@ public class MongoDbQueryBuilder implements QueryBuilder {
 
         QueryState queryState = new QueryState(query, true, false);
 
-        queryState.joinPaths.addAll(query.getJoinPaths().stream().map(JoinPath::getPath).collect(Collectors.toList()));
-
         Map<String, Object> predicateObj = new LinkedHashMap<>();
         Map<String, Object> projectionObj = new LinkedHashMap<>();
         Map<String, Object> countObj = new LinkedHashMap<>();
         Map<String, Object> sortObj = new LinkedHashMap<>();
 
+        List<Map<String, Object>> pipeline = new ArrayList<>();
+        addLookups(pipeline, query.getJoinPaths(), query.getPersistentEntity(), queryState);
         buildProjection(query.getProjections(), query.getPersistentEntity(), projectionObj, countObj);
-
         QueryModel.Junction criteria = query.getCriteria();
         if (!criteria.isEmpty()) {
             predicateObj = buildWhereClause(annotationMetadata, criteria, queryState);
@@ -242,9 +241,6 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         if (sort.isSorted()) {
             sort.getOrderBy().forEach(order -> sortObj.put(order.getProperty(), order.isAscending() ? 1 : -1));
         }
-
-        List<Map<String, Object>> pipeline = new ArrayList<>();
-        addLookups(pipeline, query.getJoinPaths(), query.getPersistentEntity());
         if (!predicateObj.isEmpty()) {
             pipeline.add(singletonMap("$match", predicateObj));
         }
@@ -308,7 +304,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         };
     }
 
-    private void addLookups(List<Map<String, Object>> pipeline, Collection<JoinPath> joins, PersistentEntity persistentEntity) {
+    private void addLookups(List<Map<String, Object>> pipeline, Collection<JoinPath> joins, PersistentEntity persistentEntity, QueryState queryState) {
         if (joins.isEmpty()) {
             return;
         }
@@ -319,6 +315,12 @@ public class MongoDbQueryBuilder implements QueryBuilder {
             for (String path : StringUtils.splitOmitEmptyStrings(join, '.')) {
                 fullPath.add(path);
                 String thisPath = fullPath.toString();
+                if (queryState.joinPaths.contains(thisPath)) {
+                    prev = thisPath;
+                    continue;
+                }
+                queryState.joinPaths.add(thisPath);
+
                 PersistentPropertyPath propertyPath = persistentEntity.getPropertyPath(thisPath);
                 PersistentProperty property = propertyPath.getProperty();
                 if (!(property instanceof Association)) {

@@ -20,7 +20,7 @@ import io.micronaut.data.document.tck.repositories.SaleRepository
 import io.micronaut.data.document.tck.repositories.StudentRepository
 import org.bson.BsonDocument
 
-class MongoDocumentRepositorySpec extends AbstractDocumentRepositorySpec implements MongoDbTestPropertyProvider {
+class MongoDocumentRepositorySpec extends AbstractDocumentRepositorySpec implements MongoTestPropertyProvider {
 
     MongoClient mongoClient = context.getBean(MongoClient)
 

@@ -109,7 +109,7 @@ public class DataSerdeRegistry extends DefaultSerdeRegistry {
                             } else {
                                 Encoder en = encoder.encodeObject(type);
                                 en.encodeKey("_id");
-                                idSerializer.serialize(encoder, context, id, idType);
+                                idSerializer.serialize(en, context, id, idType);
                                 en.finishStructure();
                             }
                         }

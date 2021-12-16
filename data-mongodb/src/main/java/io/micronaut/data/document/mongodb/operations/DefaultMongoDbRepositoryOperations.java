@@ -80,9 +80,9 @@ import java.util.stream.Stream;
 @Internal
 public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperations<ClientSession, Object> implements MongoDbRepositoryOperations, SyncCascadeOperations.SyncCascadeOperationsHelper<DefaultMongoDbRepositoryOperations.MongoDbOperationContext> {
     private static final Logger QUERY_LOG = DataSettings.QUERY_LOG;
+    private static final BsonDocument EMPTY = new BsonDocument();
     private final MongoClient mongoClient;
     private final SyncCascadeOperations<MongoDbOperationContext> cascadeOperations;
-    private final BsonDocument EMPTY = new BsonDocument();
 
     /**
      * Default constructor.
@@ -221,7 +221,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         }
         return entity;
     }
-
 
     private <T> Bson getUpdate(CodecRegistry codecRegistry, PreparedQuery<?, ?> preparedQuery, RuntimePersistentEntity<T> persistentEntity) {
         String query = preparedQuery.getUpdate();
@@ -382,7 +381,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         return pp;
     }
 
-    List<Object> expandValue(Object value, DataType dataType) {
+    private List<Object> expandValue(Object value, DataType dataType) {
         // Special case for byte array, we want to support a list of byte[] convertible values
         if (value == null || dataType != null && dataType.isArray() && dataType != DataType.BYTE_ARRAY || value instanceof byte[]) {
             // not expanded
@@ -470,9 +469,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
 
                     }
-                    if (isSingleResult && pageable.getOffset() > 0) {
-                        pageable = Pageable.from(pageable.getNumber(), 1);
-                    }
                 }
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'find' with filter: {} skip: {} limit: {}", filter.toBsonDocument().toJson(), skip, limit);
@@ -482,9 +478,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             boolean isSingleResult = false;
             int limit = 0;
             if (pageable != Pageable.UNPAGED) {
-                if (isSingleResult && pageable.getOffset() > 0) {
-                    pageable = Pageable.from(pageable.getNumber(), 1);
-                }
                 int skip = (int) pageable.getOffset();
                 limit = pageable.getSize();
                 Sort pageableSort = pageable.getSort();

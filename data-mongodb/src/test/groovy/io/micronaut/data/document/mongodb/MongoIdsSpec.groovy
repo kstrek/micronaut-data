@@ -41,7 +41,7 @@ import org.bson.types.ObjectId
 import spock.lang.Specification
 
 @MicronautTest
-class MongoIdsSpec extends Specification implements MongoDbTestPropertyProvider {
+class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
 
     @Inject
     DefaultMongoDbRepositoryOperations dbRepositoryOperations
