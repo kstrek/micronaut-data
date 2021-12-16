@@ -1,6 +1,7 @@
 package io.micronaut.data.document.mongodb
 
 import org.testcontainers.containers.MongoDBContainer
+import org.testcontainers.utility.DockerImageName
 
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -11,7 +12,7 @@ class TestContainerHolder {
 
     static MongoDBContainer getContainerOrCreate() {
         if (container == null) {
-            container = new MongoDBContainer()
+            container = new MongoDBContainer(DockerImageName.parse("mongo").withTag("5"))
             usedCounter = new AtomicInteger()
         } else {
             usedCounter.intValue()

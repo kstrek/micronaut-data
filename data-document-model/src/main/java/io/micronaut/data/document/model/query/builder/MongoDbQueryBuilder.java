@@ -29,6 +29,7 @@ import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -229,8 +230,8 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         Map<String, Object> countObj = new LinkedHashMap<>();
         Map<String, Object> sortObj = new LinkedHashMap<>();
 
-        List<Map<String, Object>> pipeline = new ArrayList<>();
-        addLookups(pipeline, query.getJoinPaths(), query.getPersistentEntity(), queryState);
+        addLookups(query.getJoinPaths(), queryState);
+        List<Map<String, Object>> pipeline = queryState.rootLookups.pipeline;
         buildProjection(query.getProjections(), query.getPersistentEntity(), projectionObj, countObj);
         QueryModel.Junction criteria = query.getCriteria();
         if (!criteria.isEmpty()) {
@@ -304,24 +305,31 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         };
     }
 
-    private void addLookups(List<Map<String, Object>> pipeline, Collection<JoinPath> joins, PersistentEntity persistentEntity, QueryState queryState) {
+    private void addLookups(Collection<JoinPath> joins, QueryState queryState) {
         if (joins.isEmpty()) {
             return;
         }
-        List<String> joined = joins.stream().map(JoinPath::getPath).collect(Collectors.toList());
+        List<String> joined = joins.stream().map(JoinPath::getPath)
+                .sorted((o1, o2) -> Comparator.comparingInt(String::length).thenComparing(String::compareTo).compare(o1, o2))
+                .collect(Collectors.toList());
         for (String join : joined) {
-            StringJoiner fullPath = new StringJoiner(".");
-            String prev = null;
+            StringJoiner rootPath = new StringJoiner(".");
+            StringJoiner currentEntityPath = new StringJoiner(".");
+            LookupsStage currentLookup = queryState.rootLookups;
             for (String path : StringUtils.splitOmitEmptyStrings(join, '.')) {
-                fullPath.add(path);
-                String thisPath = fullPath.toString();
-                if (queryState.joinPaths.contains(thisPath)) {
-                    prev = thisPath;
+                rootPath.add(path);
+                currentEntityPath.add(path);
+                String thisPath = currentEntityPath.toString();
+                if (currentLookup.subLookups.containsKey(thisPath)) {
+                    currentLookup = currentLookup.subLookups.get(path);
+                    currentEntityPath = new StringJoiner(".");
                     continue;
                 }
-                queryState.joinPaths.add(thisPath);
 
-                PersistentPropertyPath propertyPath = persistentEntity.getPropertyPath(thisPath);
+                PersistentPropertyPath propertyPath = currentLookup.persistentEntity.getPropertyPath(thisPath);
+                System.out.println(currentLookup.persistentEntity);
+                System.out.println(thisPath);
+                System.out.println(propertyPath);
                 PersistentProperty property = propertyPath.getProperty();
                 if (!(property instanceof Association)) {
                     continue;
@@ -330,11 +338,14 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                 if (association.getKind() == Relation.Kind.EMBEDDED) {
                     continue;
                 }
+                LookupsStage lookupStage = new LookupsStage(association.getAssociatedEntity());
+                List<Map<String, Object>> pipeline = currentLookup.pipeline;
                 if (association.isForeignKey()) {
                     pipeline.add(lookup(
                             association.getAssociatedEntity().getPersistedName(),
-                            (prev == null) ? "_id" : prev + "._id",
+                            "_id",
                             association.getInverseSide().get().getName() + "._id",
+                            lookupStage.pipeline,
                             thisPath)
                     );
                 } else {
@@ -342,22 +353,37 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                             association.getAssociatedEntity().getPersistedName(),
                             thisPath + "._id",
                             "_id",
+                            lookupStage.pipeline,
                             thisPath)
                     );
                 }
                 if (association.getKind().isSingleEnded()) {
                     pipeline.add(unwind("$" + thisPath, true));
                 }
-                prev = thisPath;
+                currentLookup.subLookups.put(currentEntityPath.toString(), lookupStage);
             }
+            queryState.joinPaths.add(join);
         }
     }
 
-    private Map<String, Object> lookup(String from, String localField, String foreignField, String as) {
+    private static class LookupsStage {
+
+        final PersistentEntity persistentEntity;
+
+        List<Map<String, Object>> pipeline = new ArrayList<>();
+        Map<String, LookupsStage> subLookups = new HashMap<>();
+
+        private LookupsStage(PersistentEntity persistentEntity) {
+            this.persistentEntity = persistentEntity;
+        }
+    }
+
+    private Map<String, Object> lookup(String from, String localField, String foreignField, List<Map<String, Object>> pipeline, String as) {
         Map<String, Object> lookup = new LinkedHashMap<>();
         lookup.put("from", from);
         lookup.put("localField", localField);
         lookup.put("foreignField", foreignField);
+        lookup.put("pipeline", pipeline);
         lookup.put("as", as);
         return singletonMap("$lookup", lookup);
     }
@@ -794,6 +820,8 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         private final boolean escape;
         private final PersistentEntity entity;
 
+        private final LookupsStage rootLookups;
+
         private QueryState(QueryModel query, boolean allowJoins, boolean useAlias) {
             this.allowJoins = allowJoins;
             this.queryObject = query;
@@ -801,6 +829,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
             this.escape = shouldEscape();
             this.rootAlias = useAlias ? null : null;
             this.parameterBindings = new ArrayList<>(entity.getPersistentPropertyNames().size());
+            this.rootLookups = new LookupsStage(entity);
         }
 
         /**
