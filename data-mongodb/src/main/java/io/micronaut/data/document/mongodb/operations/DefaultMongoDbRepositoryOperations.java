@@ -459,7 +459,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 Bson sort = null;
                 int skip = 0;
                 int limit = 0;
-                boolean isSingleResult = false;
                 if (pageable != Pageable.UNPAGED) {
                     skip = (int) pageable.getOffset();
                     limit = pageable.getSize();
@@ -475,7 +474,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 }
                 return getCollection(database, persistentEntity, resultType).find(clientSession, filter, resultType).skip(skip).limit(Math.max(limit, 0)).sort(sort).into(new ArrayList<>(limit > 0 ? limit : 20));
             }
-            boolean isSingleResult = false;
             int limit = 0;
             if (pageable != Pageable.UNPAGED) {
                 int skip = (int) pageable.getOffset();

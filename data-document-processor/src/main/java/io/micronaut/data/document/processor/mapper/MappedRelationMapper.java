@@ -21,7 +21,7 @@ public class MappedRelationMapper implements TypedAnnotationMapper<Relation> {
     @Override
     public List<AnnotationValue<?>> map(AnnotationValue<Relation> annotation, VisitorContext visitorContext) {
         Relation.Kind kind = annotation.getRequiredValue(Relation.Kind.class);
-        if (kind == Relation.Kind.MANY_TO_ONE) {
+        if (kind == Relation.Kind.MANY_TO_ONE || kind == Relation.Kind.ONE_TO_ONE) {
             return Collections.singletonList(
                     AnnotationValue.builder(SerdeConfig.class)
                             .member(SerdeConfig.SERIALIZER_CLASS, OneRelationSerializer.class)

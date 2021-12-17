@@ -327,9 +327,6 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                 }
 
                 PersistentPropertyPath propertyPath = currentLookup.persistentEntity.getPropertyPath(thisPath);
-                System.out.println(currentLookup.persistentEntity);
-                System.out.println(thisPath);
-                System.out.println(propertyPath);
                 PersistentProperty property = propertyPath.getProperty();
                 if (!(property instanceof Association)) {
                     continue;

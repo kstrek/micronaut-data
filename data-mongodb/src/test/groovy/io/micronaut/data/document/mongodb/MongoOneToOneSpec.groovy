@@ -1,6 +1,5 @@
 package io.micronaut.data.document.mongodb
 
-import groovy.transform.ToString
 import io.micronaut.context.ApplicationContext
 import io.micronaut.data.annotation.GeneratedValue
 import io.micronaut.data.annotation.Id
@@ -19,23 +18,25 @@ import spock.lang.Shared
 import spock.lang.Specification
 
 @MicronautTest
-class MongoMultiManyToOneJoinSpec extends Specification implements MongoTestPropertyProvider {
+class MultiOneToOneJoinSpec extends Specification implements MongoTestPropertyProvider {
     @AutoCleanup
     @Shared
     ApplicationContext applicationContext = ApplicationContext.run(getProperties())
 
     @Shared
     @Inject
-    RefARepository refARepository = applicationContext.getBean(RefARepository)
+    CRefARepository refARepository = applicationContext.getBean(CRefARepository)
 
-    void 'test many-to-one hierarchy'() {
+    void 'test one-to-one hierarchy'() {
         given:
-            RefA refA = new RefA(refB: new RefB(refC: new RefC(name: "TestXyz")))
+            CRefA newValue = new CRefA(refB: new CRefB(refC: new CRefC(name: "TestXyz")))
         when:
-            refARepository.save(refA)
-            refA = refARepository.findById(refA.id).get()
+            refARepository.save(newValue)
+            CRefA refA = refARepository.findById(newValue.id).get()
         then:
             refA.id
+            refA.refB.id == newValue.refB.id
+            refA.refB.refC.id == newValue.refB.refC.id
             refA.refB.refC.name == "TestXyz"
         when:
             def list = refARepository.queryAll(Pageable.from(0, 10))
@@ -57,47 +58,43 @@ class MongoMultiManyToOneJoinSpec extends Specification implements MongoTestProp
 }
 
 @MongoDbRepository
-interface RefARepository extends CrudRepository<RefA, String> {
+interface CRefARepository extends CrudRepository<CRefA, String> {
 
     @Join(value = "refB")
     @Join(value = "refB.refC")
-    Page<RefA> findAll(Pageable pageable)
+    Page<CRefA> findAll(Pageable pageable)
 
     @Join(value = "refB")
     @Join(value = "refB.refC")
-    List<RefA> queryAll(Pageable pageable)
+    List<CRefA> queryAll(Pageable pageable)
 
-    @Join(value = "refB")
     @Join(value = "refB.refC")
     @Override
-    Optional<RefA> findById(String id)
+    Optional<CRefA> findById(String id)
 }
 
-@ToString
-@MappedEntity("ref_a")
-class RefA {
+@MappedEntity("one_a")
+class CRefA {
     @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
-    @Relation(value = Relation.Kind.MANY_TO_ONE, cascade = Relation.Cascade.ALL)
-    RefB refB
+    @Relation(value = Relation.Kind.ONE_TO_ONE, cascade = Relation.Cascade.ALL)
+    CRefB refB
 }
 
-@ToString
-@MappedEntity("ref_b")
-class RefB {
+@MappedEntity("one_b")
+class CRefB {
     @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
-    @Relation(value = Relation.Kind.MANY_TO_ONE, cascade = Relation.Cascade.ALL)
-    RefC refC
+    @Relation(value = Relation.Kind.ONE_TO_ONE, cascade = Relation.Cascade.ALL)
+    CRefC refC
 }
 
-@ToString
-@MappedEntity("ref_c")
-class RefC {
+@MappedEntity("one_c")
+class CRefC {
     @MappedProperty("_id")
     @Id
     @GeneratedValue
