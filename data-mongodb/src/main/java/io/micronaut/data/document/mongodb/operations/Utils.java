@@ -3,7 +3,9 @@ package io.micronaut.data.document.mongodb.operations;
 import com.mongodb.client.model.Filters;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
+import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.core.convert.ConversionService;
+import io.micronaut.data.model.Association;
 import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.RuntimePersistentProperty;
@@ -27,27 +29,44 @@ import java.util.Date;
 @Internal
 public final class Utils {
 
-    static Bson filterById(ConversionService<?> conversionService,
-                           RuntimePersistentEntity<?> persistentEntity,
-                           Object value) {
+    public static BsonValue idValue(ConversionService<?> conversionService,
+                             RuntimePersistentEntity<?> persistentEntity,
+                             Object value,
+                             CodecRegistry codecRegistry) {
         RuntimePersistentProperty<?> identity = persistentEntity.getIdentity();
         if (identity != null) {
+            if (identity instanceof Association) {
+                return toBsonValue(conversionService, value, codecRegistry);
+            }
             AnnotationValue<BsonRepresentation> bsonRepresentation = identity.getAnnotationMetadata().getAnnotation(BsonRepresentation.class);
             if (bsonRepresentation != null) {
                 BsonType bsonType = bsonRepresentation.getRequiredValue(BsonType.class);
-                return Filters.eq(toBsonValue(conversionService, bsonType, value));
+                return toBsonValue(conversionService, bsonType, value);
             } else {
-                Class<?> type = identity.getProperty().getType();
-                if (type == String.class) {
-                    return Filters.eq(new ObjectId(value.toString()));
+                BeanProperty property = identity.getProperty();
+                Class<?> type = property.getType();
+                Object o = property.get(value);
+                if (type == String.class && o != null) {
+                    return new BsonObjectId(new ObjectId(o.toString()));
                 }
-                return Filters.eq(value);
+                return toBsonValue(conversionService, value, codecRegistry);
             }
         }
         throw new IllegalStateException("Cannot determine id!");
     }
 
-    static Bson filterByIdAndVersion(ConversionService<?> conversionService, RuntimePersistentEntity persistentEntity, Object entity) {
+    static Bson filterById(ConversionService<?> conversionService,
+                           RuntimePersistentEntity<?> persistentEntity,
+                           Object value,
+                           CodecRegistry codecRegistry) {
+        BsonValue id = idValue(conversionService, persistentEntity, value, codecRegistry);
+        return new BsonDocument().append("$eq", id);
+    }
+
+    static Bson filterByIdAndVersion(ConversionService<?> conversionService,
+                                     RuntimePersistentEntity persistentEntity,
+                                     Object entity,
+                                     CodecRegistry codecRegistry) {
         if (persistentEntity.getIdentity() == null) {
             throw new IllegalStateException("Cannot determine id!");
         }
@@ -56,11 +75,11 @@ public final class Utils {
         if (version != null) {
             Object versionValue = version.getProperty().get(entity);
             return Filters.and(
-                    filterById(conversionService, persistentEntity, idValue),
+                    filterById(conversionService, persistentEntity, idValue, codecRegistry),
                     Filters.eq(getPropertyPersistName(version), versionValue)
             );
         }
-        return filterById(conversionService, persistentEntity, idValue);
+        return filterById(conversionService, persistentEntity, idValue, codecRegistry);
     }
 
     private static String getPropertyPersistName(PersistentProperty property) {
@@ -100,7 +119,6 @@ public final class Utils {
         }
         BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(value, codecRegistry).toBsonDocument();
         return bsonDocument;
-//        throw new IllegalStateException("Not implemented for: " + value);
     }
 
     static BsonValue toBsonValue(ConversionService<?> conversionService, BsonType bsonType, Object value) {

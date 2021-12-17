@@ -21,9 +21,12 @@ import io.micronaut.core.type.Argument;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
 import io.micronaut.data.exceptions.DataAccessException;
+import io.micronaut.data.model.Association;
 import io.micronaut.data.model.DataType;
+import io.micronaut.data.model.Embedded;
 import io.micronaut.data.model.Page;
 import io.micronaut.data.model.Pageable;
+import io.micronaut.data.model.PersistentEntity;
 import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.PersistentPropertyPath;
 import io.micronaut.data.model.Sort;
@@ -67,11 +70,13 @@ import org.slf4j.Logger;
 import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -105,11 +110,12 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         try (ClientSession clientSession = mongoClient.startSession()) {
             MongoDatabase database = getDatabase();
             RuntimePersistentEntity<T> persistentEntity = runtimeEntityRegistry.getEntity(type);
-            Bson filter = Utils.filterById(conversionService, persistentEntity, id);
+            MongoCollection<T> collection = getCollection(database, persistentEntity, type);
+            Bson filter = Utils.filterById(conversionService, persistentEntity, id, collection.getCodecRegistry());
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing Mongo 'find' with filter: {}", filter.toBsonDocument().toJson());
             }
-            return getCollection(database, persistentEntity, type).find(clientSession, filter, type).first();
+            return collection.find(clientSession, filter, type).first();
         }
     }
 
@@ -713,8 +719,80 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     }
 
     @Override
-    public void persistManyAssociationBatch(MongoDbOperationContext ctx, RuntimeAssociation runtimeAssociation, Object value, RuntimePersistentEntity<Object> persistentEntity, Iterable<Object> child, RuntimePersistentEntity<Object> childPersistentEntity) {
-        throw new IllegalStateException();
+    public void persistManyAssociationBatch(MongoDbOperationContext ctx, RuntimeAssociation runtimeAssociation,
+                                            Object value,
+                                            RuntimePersistentEntity<Object> persistentEntity,
+                                            Iterable<Object> child,
+                                            RuntimePersistentEntity<Object> childPersistentEntity) {
+//        String joinTableName = runtimeAssociation.getAnnotationMetadata()
+//                .stringValue(ANN_JOIN_TABLE, "name")
+//                .orElseGet(() ->
+//                        runtimeAssociation.getOwner().getNamingStrategy().mappedName(association)
+//                );
+        String joinCollectionName = runtimeAssociation.getOwner().getNamingStrategy().mappedName(runtimeAssociation);
+        MongoCollection<BsonDocument> collection = getDatabase().getCollection(joinCollectionName, BsonDocument.class);
+        List<BsonDocument> associations = new ArrayList<>();
+        for (Object c : child) {
+            associations.add(association(collection, value, persistentEntity, c, childPersistentEntity));
+        }
+        if (QUERY_LOG.isDebugEnabled()) {
+            QUERY_LOG.debug("Executing Mongo 'insertMany' for collection: {} with documents: {}", collection.getNamespace().getFullName(), associations);
+        }
+        collection.insertMany(associations);
+//        traversePersistentProperties();
+//        InsertOneResult insertOneResult = collection.insertOne(ctx.clientSession, entity);
+//        BsonValue insertedId = insertOneResult.getInsertedId();
+//        BeanProperty<T, Object> property = (BeanProperty<T, Object>) persistentEntity.getIdentity().getProperty();
+//        if (property.get(entity) == null) {
+//            entity = updateEntityId(property, entity, insertedId);
+//        }
+    }
+
+    private BsonDocument association(MongoCollection<BsonDocument> collection,
+                                     Object value, RuntimePersistentEntity<Object> persistentEntity,
+                                     Object child, RuntimePersistentEntity<Object> childPersistentEntity) {
+        BsonDocument document = new BsonDocument();
+        document.put(persistentEntity.getPersistedName(), Utils.idValue(conversionService, persistentEntity, value, collection.getCodecRegistry()));
+        document.put(childPersistentEntity.getPersistedName(), Utils.idValue(conversionService, childPersistentEntity, child, collection.getCodecRegistry()));
+        return document;
+    };
+
+    private void traversePersistentProperties(PersistentProperty property, BiConsumer<List<Association>, PersistentProperty> consumer) {
+        traversePersistentProperties(Collections.emptyList(), property, consumer);
+    }
+
+    private void traversePersistentProperties(List<Association> associations,
+                                              PersistentProperty property,
+                                              BiConsumer<List<Association>, PersistentProperty> consumerProperty) {
+        if (property instanceof Embedded) {
+            Embedded embedded = (Embedded) property;
+            PersistentEntity embeddedEntity = embedded.getAssociatedEntity();
+            Collection<? extends PersistentProperty> embeddedProperties = embeddedEntity.getPersistentProperties();
+            List<Association> newAssociations = new ArrayList<>(associations);
+            newAssociations.add((Association) property);
+            for (PersistentProperty embeddedProperty : embeddedProperties) {
+                traversePersistentProperties(newAssociations, embeddedProperty, consumerProperty);
+            }
+        } else if (property instanceof Association) {
+            Association association = (Association) property;
+            if (association.isForeignKey()) {
+                return;
+            }
+            List<Association> newAssociations = new ArrayList<>(associations);
+            newAssociations.add((Association) property);
+            PersistentEntity associatedEntity = association.getAssociatedEntity();
+            PersistentProperty assocIdentity = associatedEntity.getIdentity();
+            if (assocIdentity == null) {
+                throw new IllegalStateException("Identity cannot be missing for: " + associatedEntity);
+            }
+            if (assocIdentity instanceof Association) {
+                traversePersistentProperties(newAssociations, assocIdentity, consumerProperty);
+            } else {
+                consumerProperty.accept(newAssociations, assocIdentity);
+            }
+        } else {
+            consumerProperty.accept(associations, property);
+        }
     }
 
     private <T> MongoDbEntityOperation<T> createMongoDbInsertOneOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, T entity) {
@@ -739,11 +817,12 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     private <T> MongoDbEntityOperation<T> createMongoDbReplaceOneOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, T entity) {
         return new MongoDbEntityOperation<T>(ctx, persistentEntity, entity, false) {
 
+            MongoCollection<BsonDocument> collection = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class);
             Bson filter;
 
             @Override
             protected void collectAutoPopulatedPreviousValues() {
-                filter = Utils.filterByIdAndVersion(conversionService, persistentEntity, entity);
+                filter = Utils.filterByIdAndVersion(conversionService, persistentEntity, entity, collection.getCodecRegistry());
             }
 
             @Override
@@ -753,7 +832,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 }
                 BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(entity, getDatabase().getCodecRegistry());
                 bsonDocument.remove("_id");
-                UpdateResult updateResult = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class).replaceOne(ctx.clientSession, filter, bsonDocument);
+                UpdateResult updateResult = collection.replaceOne(ctx.clientSession, filter, bsonDocument);
                 modifiedCount = updateResult.getModifiedCount();
                 if (persistentEntity.getVersion() != null) {
                     checkOptimisticLocking(1, (int) modifiedCount);
@@ -765,11 +844,13 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     private <T> MongoDbEntitiesOperation<T> createMongoDbReplaceManyOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, Iterable<T> entities) {
         return new MongoDbEntitiesOperation<T>(ctx, persistentEntity, entities, false) {
 
+            MongoCollection<BsonDocument> collection = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class);
             Map<Data, Bson> filters;
 
             @Override
             protected void collectAutoPopulatedPreviousValues() {
-                filters = entities.stream().collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity)));
+                filters = entities.stream()
+                        .collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity, collection.getCodecRegistry())));
             }
 
             @Override
@@ -786,7 +867,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                     }
                     BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(d.entity, getDatabase().getCodecRegistry());
                     bsonDocument.remove("_id");
-                    UpdateResult updateResult = getCollection(ctx.mongoDatabase, persistentEntity, BsonDocument.class).replaceOne(ctx.clientSession, filter, bsonDocument);
+                    UpdateResult updateResult = collection.replaceOne(ctx.clientSession, filter, bsonDocument);
                     modifiedCount += updateResult.getModifiedCount();
                 }
                 if (persistentEntity.getVersion() != null) {
@@ -799,16 +880,16 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     private <T> MongoDbEntityOperation<T> createMongoDbDeleteOneOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, T entity) {
         return new MongoDbEntityOperation<T>(ctx, persistentEntity, entity, false) {
 
+            MongoCollection<T> collection = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType());
             Bson filter;
 
             @Override
             protected void collectAutoPopulatedPreviousValues() {
-                filter = Utils.filterByIdAndVersion(conversionService, persistentEntity, entity);
+                filter = Utils.filterByIdAndVersion(conversionService, persistentEntity, entity, collection.getCodecRegistry());
             }
 
             @Override
             protected void execute() throws RuntimeException {
-                MongoCollection<T> collection = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType());
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'deleteOne' with filter: {}", filter.toBsonDocument().toJson());
                 }
@@ -824,11 +905,12 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     private <T> MongoDbEntitiesOperation<T> createMongoDbDeleteManyOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, Iterable<T> entities) {
         return new MongoDbEntitiesOperation<T>(ctx, persistentEntity, entities, false) {
 
+            MongoCollection<T> collection = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType());
             Map<Data, Bson> filters;
 
             @Override
             protected void collectAutoPopulatedPreviousValues() {
-                filters = entities.stream().collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity)));
+                filters = entities.stream().collect(Collectors.toMap(d -> d, d -> Utils.filterByIdAndVersion(conversionService, persistentEntity, d.entity, collection.getCodecRegistry())));
             }
 
             @Override
@@ -837,7 +919,7 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'deleteMany' with filter: {}", filter.toBsonDocument().toJson());
                 }
-                DeleteResult deleteResult = getCollection(ctx.mongoDatabase, persistentEntity, persistentEntity.getIntrospection().getBeanType()).deleteMany(ctx.clientSession, filter);
+                DeleteResult deleteResult = collection.deleteMany(ctx.clientSession, filter);
                 modifiedCount = deleteResult.getDeletedCount();
                 if (persistentEntity.getVersion() != null) {
                     int expected = (int) entities.stream().filter(d -> !d.vetoed).count();

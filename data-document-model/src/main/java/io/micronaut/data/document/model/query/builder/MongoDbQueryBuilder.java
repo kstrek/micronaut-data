@@ -9,6 +9,7 @@ import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
 import io.micronaut.data.annotation.Relation;
 import io.micronaut.data.annotation.TypeRole;
+import io.micronaut.data.exceptions.MappingException;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.Embedded;
 import io.micronaut.data.model.Pageable;
@@ -27,6 +28,7 @@ import io.micronaut.serde.config.annotation.SerdeConfig;
 
 import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -36,10 +38,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -337,30 +341,173 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                 }
                 LookupsStage lookupStage = new LookupsStage(association.getAssociatedEntity());
                 List<Map<String, Object>> pipeline = currentLookup.pipeline;
-                if (association.isForeignKey()) {
-                    pipeline.add(lookup(
-                            association.getAssociatedEntity().getPersistedName(),
-                            "_id",
-                            association.getInverseSide().get().getName() + "._id",
-                            lookupStage.pipeline,
-                            thisPath)
+                Optional<Association> inverseSide = association.getInverseSide().map(Function.identity());
+                PersistentEntity persistentEntity = association.getOwner();
+
+                String joinedCollectionName = association.getAssociatedEntity().getPersistedName();
+                String ownerCollectionName = persistentEntity.getPersistedName();
+                if (association.getKind() == Relation.Kind.MANY_TO_MANY || association.isForeignKey() && !inverseSide.isPresent()) {
+                    PersistentEntity associatedEntity = association.getAssociatedEntity();
+                    PersistentEntity associationOwner = association.getOwner();
+                    // JOIN TABLE
+                    PersistentProperty identity = associatedEntity.getIdentity();
+                    if (identity == null) {
+                        throw new IllegalArgumentException("Associated entity [" + associatedEntity.getName() + "] defines no ID. Cannot join.");
+                    }
+                    final PersistentProperty associatedId = associationOwner.getIdentity();
+                    if (associatedId == null) {
+                        throw new MappingException("Cannot join on entity [" + associationOwner.getName() + "] that has no declared ID");
+                    }
+                    Association owningAssociation = inverseSide.orElse(association);
+                    boolean isAssociationOwner = !association.getInverseSide().isPresent();
+                    NamingStrategy namingStrategy = associationOwner.getNamingStrategy();
+                    AnnotationMetadata annotationMetadata = owningAssociation.getAnnotationMetadata();
+
+                    List<String> ownerJoinFields = resolveJoinTableAssociatedFields(annotationMetadata, isAssociationOwner, associationOwner, namingStrategy);
+                    List<String> ownerJoinCollectionFields = resolveJoinTableJoinFields(annotationMetadata, isAssociationOwner, associationOwner, namingStrategy);
+                    List<String> associationJoinFields = resolveJoinTableAssociatedFields(annotationMetadata, !isAssociationOwner, associatedEntity, namingStrategy);
+                    List<String> associationJoinCollectionFields = resolveJoinTableJoinFields(annotationMetadata, !isAssociationOwner, associatedEntity, namingStrategy);
+
+                    String joinCollectionName = namingStrategy.mappedName(owningAssociation);
+
+//                        String joinTableName = annotationMetadata
+//                                .stringValue(ANN_JOIN_TABLE, "name")
+//                                .orElseGet(() -> namingStrategy.mappedName(association));
+
+                    List<Map<String, Object>> joinCollectionLookupPipeline = new ArrayList<>();
+                    pipeline.add(lookup(joinCollectionName, "_id", ownerCollectionName, joinCollectionLookupPipeline, thisPath));
+                    joinCollectionLookupPipeline.add(
+                            lookup(
+                                    joinedCollectionName,
+                                    joinedCollectionName,
+                                    "_id",
+                                    lookupStage.pipeline,
+                                    joinedCollectionName)
+                    );
+                    joinCollectionLookupPipeline.add(unwind("$" + joinedCollectionName, true));
+                    joinCollectionLookupPipeline.add(
+                            singletonMap("$replaceRoot", singletonMap("newRoot", "$" + joinedCollectionName))
                     );
                 } else {
-                    pipeline.add(lookup(
-                            association.getAssociatedEntity().getPersistedName(),
-                            thisPath + "._id",
-                            "_id",
-                            lookupStage.pipeline,
-                            thisPath)
-                    );
-                }
-                if (association.getKind().isSingleEnded()) {
-                    pipeline.add(unwind("$" + thisPath, true));
+                    String currentPath = asPath(null, propertyPath.getAssociations(), propertyPath.getProperty());
+                    if (association.isForeignKey()) {
+                        String mappedBy = association.getAnnotationMetadata().stringValue(Relation.class, "mappedBy").get();
+                        PersistentPropertyPath mappedByPath = association.getAssociatedEntity().getPropertyPath(mappedBy);
+                        if (mappedByPath == null) {
+                            throw new IllegalStateException("Cannot find mapped path: " + mappedBy);
+                        }
+                        if (!(mappedByPath.getProperty() instanceof Association)) {
+                            throw new IllegalStateException("Expected association as a mapped path: " + mappedBy);
+                        }
+
+                        List<String> localMatchFields = new ArrayList<>();
+                        List<String> foreignMatchFields = new ArrayList<>();
+                        traversePersistentProperties(currentLookup.persistentEntity.getIdentity(), (associations, p) -> {
+                            String fieldPath = asPath(null, associations, p);
+                            localMatchFields.add(fieldPath);
+                        });
+
+                        List<Association> mappedAssociations = new ArrayList<>(mappedByPath.getAssociations());
+                        mappedAssociations.add((Association) mappedByPath.getProperty());
+
+                        traversePersistentProperties(mappedAssociations, currentLookup.persistentEntity.getIdentity(), (associations, p) -> {
+                            String fieldPath = asPath(null, associations, p);
+                            foreignMatchFields.add(fieldPath);
+                        });
+
+                        pipeline.add(lookup(
+                                joinedCollectionName,
+                                localMatchFields,
+                                foreignMatchFields,
+                                lookupStage.pipeline,
+                                currentPath)
+                        );
+                    } else {
+                        List<Association> mappedAssociations = new ArrayList<>(propertyPath.getAssociations());
+                        mappedAssociations.add((Association) propertyPath.getProperty());
+
+                        List<String> localMatchFields = new ArrayList<>();
+                        List<String> foreignMatchFields = new ArrayList<>();
+                        traversePersistentProperties(mappedAssociations, lookupStage.persistentEntity.getIdentity(), (associations, p) -> {
+                            String fieldPath = asPath(null, associations, p);
+                            localMatchFields.add(fieldPath);
+                        });
+                        traversePersistentProperties(lookupStage.persistentEntity.getIdentity(), (associations, p) -> {
+                            String fieldPath = asPath(null, associations, p);
+                            foreignMatchFields.add(fieldPath);
+                        });
+
+                        pipeline.add(lookup(
+                                joinedCollectionName,
+                                localMatchFields,
+                                foreignMatchFields,
+                                lookupStage.pipeline,
+                                currentPath)
+                        );
+                    }
+                    if (association.getKind().isSingleEnded()) {
+                        pipeline.add(unwind("$" + currentPath, true));
+                    }
                 }
                 currentLookup.subLookups.put(currentEntityPath.toString(), lookupStage);
             }
             queryState.joinPaths.add(join);
         }
+    }
+
+    @NonNull
+    private List<String> resolveJoinTableJoinFields(AnnotationMetadata annotationMetadata, boolean associationOwner, PersistentEntity entity, NamingStrategy namingStrategy) {
+        List<String> joinColumns = getJoinedFields(annotationMetadata, associationOwner, "name");
+        if (!joinColumns.isEmpty()) {
+            return joinColumns;
+        }
+        List<String> fields = new ArrayList<>();
+        traversePersistentProperties(entity.getIdentity(), (associations, property) -> {
+            fields.add(asPath(namingStrategy, associations, property));
+        });
+        return fields;
+    }
+
+    @NonNull
+    private List<String> resolveJoinTableAssociatedFields(AnnotationMetadata annotationMetadata, boolean associationOwner, PersistentEntity entity, NamingStrategy namingStrategy) {
+        List<String> joinColumns = getJoinedFields(annotationMetadata, associationOwner, "referencedColumnName");
+        if (!joinColumns.isEmpty()) {
+            return joinColumns;
+        }
+        PersistentProperty identity = entity.getIdentity();
+        if (identity == null) {
+            throw new MappingException("Cannot have a foreign key association without an ID on entity: " + entity.getName());
+        }
+        List<String> fields = new ArrayList<>();
+        traversePersistentProperties(identity, (associations, property) -> {
+            fields.add(asPath(namingStrategy, associations, property));
+        });
+        return fields;
+    }
+
+    @NonNull
+    private List<String> getJoinedFields(AnnotationMetadata annotationMetadata, boolean associationOwner, String columnType) {
+//        AnnotationValue<Annotation> joinTable = annotationMetadata.getAnnotation(ANN_JOIN_TABLE);
+//        if (joinTable != null) {
+//            return joinTable.getAnnotations(associationOwner ? "joinColumns" : "inverseJoinColumns")
+//                    .stream()
+//                    .map(ann -> ann.stringValue(columnType).orElse(null))
+//                    .filter(Objects::nonNull)
+//                    .collect(Collectors.toList());
+//        }
+        return Collections.emptyList();
+    }
+
+    private String asPath(NamingStrategy namingStrategy, List<Association> associations, PersistentProperty property) {
+        if (associations.isEmpty()) {
+            return getPropertyPersistName(property);
+        }
+        StringJoiner joiner = new StringJoiner(".");
+        for (Association association : associations) {
+            joiner.add(getPropertyPersistName(association));
+        }
+        joiner.add(getPropertyPersistName(property));
+        return joiner.toString();
     }
 
     private static class LookupsStage {
@@ -385,6 +532,52 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         return singletonMap("$lookup", lookup);
     }
 
+    private Map<String, Object> lookup(String from,
+                                       List<String> localFields,
+                                       List<String> foreignFields,
+                                       List<Map<String, Object>> pipeline,
+                                       String as) {
+        if (localFields.size() != foreignFields.size()) {
+            throw new IllegalStateException("Un-matching join columns size: " + localFields.size() + " != " + foreignFields.size() + " " + localFields + ", " + foreignFields);
+        }
+        if (localFields.size() == 1) {
+            return lookup(from, localFields.iterator().next(), foreignFields.iterator().next(), pipeline, as);
+        }
+        List<Map<String, Object>> matches = new ArrayList<>(localFields.size());
+        Map<String, Object> let = new LinkedHashMap<>();
+        int i = 1;
+        Iterator<String> foreignIt = foreignFields.iterator();
+        for (String localField : localFields) {
+            String var = "v" + i++;
+            let.put(var, "$" + localField);
+            matches.add(singletonMap("$eq", Arrays.asList("$$" + var, "$" + foreignIt.next())));
+        }
+
+        Map<String, Object> match;
+        if (matches.size() > 1) {
+            match = singletonMap("$match", singletonMap("$expr", singletonMap("$and", matches)));
+        } else {
+            match = singletonMap("$match", singletonMap("$expr", matches.iterator().next()));
+        }
+
+        return lookup(from, let, match, pipeline, as);
+    }
+
+    private Map<String, Object> lookup(String from,
+                                       Map<String, Object> let,
+                                       Map<String, Object> match,
+                                       List<Map<String, Object>> pipeline,
+                                       String as) {
+
+        pipeline.add(match);
+        Map<String, Object> lookup = new LinkedHashMap<>();
+        lookup.put("from", from);
+        lookup.put("let", let);
+        lookup.put("pipeline", pipeline);
+        lookup.put("as", as);
+        return singletonMap("$lookup", lookup);
+    }
+
     private Map<String, Object> unwind(String path, boolean preserveNullAndEmptyArrays) {
         Map<String, Object> unwind = new LinkedHashMap<>();
         unwind.put("path", path);
@@ -398,11 +591,6 @@ public class MongoDbQueryBuilder implements QueryBuilder {
 
     private Map<String, Object> buildWhereClause(AnnotationMetadata annotationMetadata, QueryModel.Junction criteria, QueryState queryState) {
         CriteriaContext ctx = new CriteriaContext() {
-
-            @Override
-            public String getCurrentTableAlias() {
-                return queryState.getRootAlias();
-            }
 
             @Override
             public QueryState getQueryState() {
@@ -459,20 +647,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                         if (propertyPath == null) {
                             throw new IllegalArgumentException("Cannot project on non-existent property: " + propertyName);
                         }
-                        PersistentProperty property = propertyPath.getProperty();
-                        if (property instanceof Association && !(property instanceof Embedded)) {
-//                            if (!queryState.isJoined(propertyPath.getPath())) {
-//                                queryString.setLength(queryString.length() - 1);
-//                                continue;
-//                            }
-//                            String joinAlias = queryState.computeAlias(propertyPath.getPath());
-//                            selectAllColumns(((Association) property).getAssociatedEntity(), joinAlias, queryString);
-                            throw new IllegalStateException();
-                        } else {
-                            projectionObj.put(propertyName, 1);
-//                            appendPropertyProjection(queryString, findProperty(queryState, propertyName, null));
-//                        }
-                        }
+                        projectionObj.put(getPropertyPersistName(propertyPath.getProperty()), 1);
                     }
                 }
             }
@@ -746,21 +921,54 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         queryHandlers.put(clazz, handler);
     }
 
-    private BindingParameter.BindingContext newBindingContext(@Nullable PersistentPropertyPath ref,
-                                                              @Nullable PersistentPropertyPath persistentPropertyPath) {
-        return BindingParameter.BindingContext.create()
-                .incomingMethodParameterProperty(ref)
-                .outgoingQueryParameterProperty(persistentPropertyPath);
-    }
-
     private BindingParameter.BindingContext newBindingContext(@Nullable PersistentPropertyPath ref) {
         return BindingParameter.BindingContext.create()
                 .incomingMethodParameterProperty(ref)
                 .outgoingQueryParameterProperty(ref);
     }
 
-    protected Placeholder formatParameter(int index) {
-        return new Placeholder("?", String.valueOf(index));
+    /**
+     * Traverses properties that should be persisted.
+     *
+     * @param property The property to start traversing from
+     * @param consumer The function to invoke on every property
+     */
+    private void traversePersistentProperties(PersistentProperty property, BiConsumer<List<Association>, PersistentProperty> consumer) {
+        traversePersistentProperties(Collections.emptyList(), property, consumer);
+    }
+
+    private void traversePersistentProperties(List<Association> associations,
+                                              PersistentProperty property,
+                                              BiConsumer<List<Association>, PersistentProperty> consumerProperty) {
+        if (property instanceof Embedded) {
+            Embedded embedded = (Embedded) property;
+            PersistentEntity embeddedEntity = embedded.getAssociatedEntity();
+            Collection<? extends PersistentProperty> embeddedProperties = embeddedEntity.getPersistentProperties();
+            List<Association> newAssociations = new ArrayList<>(associations);
+            newAssociations.add((Association) property);
+            for (PersistentProperty embeddedProperty : embeddedProperties) {
+                traversePersistentProperties(newAssociations, embeddedProperty, consumerProperty);
+            }
+        } else if (property instanceof Association) {
+            Association association = (Association) property;
+            if (association.isForeignKey()) {
+                return;
+            }
+            List<Association> newAssociations = new ArrayList<>(associations);
+            newAssociations.add((Association) property);
+            PersistentEntity associatedEntity = association.getAssociatedEntity();
+            PersistentProperty assocIdentity = associatedEntity.getIdentity();
+            if (assocIdentity == null) {
+                throw new IllegalStateException("Identity cannot be missing for: " + associatedEntity);
+            }
+            if (assocIdentity instanceof Association) {
+                traversePersistentProperties(newAssociations, assocIdentity, consumerProperty);
+            } else {
+                consumerProperty.accept(newAssociations, assocIdentity);
+            }
+        } else {
+            consumerProperty.accept(associations, property);
+        }
     }
 
     /**
@@ -783,8 +991,6 @@ public class MongoDbQueryBuilder implements QueryBuilder {
      * A criterion context.
      */
     protected interface CriteriaContext extends PropertyParameterCreator {
-
-        String getCurrentTableAlias();
 
         QueryState getQueryState();
 

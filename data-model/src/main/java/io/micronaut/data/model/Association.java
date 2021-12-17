@@ -53,10 +53,9 @@ public interface Association extends PersistentProperty {
         return getAnnotationMetadata()
                 .stringValue(Relation.class, "mappedBy")
                 .flatMap(s -> {
-                    final PersistentProperty inverse =
-                            getAssociatedEntity().getPropertyByName(s);
-                    if (inverse instanceof Association) {
-                        return Optional.of((Association) inverse);
+                    final PersistentProperty persistentProperty = getAssociatedEntity().getPropertyByPath(s).orElse(null);
+                    if (persistentProperty instanceof Association) {
+                        return Optional.of((Association) persistentProperty);
                     }
                     return Optional.empty();
                 });

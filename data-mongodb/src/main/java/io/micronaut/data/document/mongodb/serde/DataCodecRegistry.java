@@ -1,7 +1,9 @@
 package io.micronaut.data.document.mongodb.serde;
 
 import io.micronaut.core.beans.BeanIntrospector;
+import io.micronaut.data.annotation.MappedEntity;
 import io.micronaut.data.model.runtime.RuntimeEntityRegistry;
+import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import jakarta.inject.Singleton;
 import org.bson.codecs.Codec;
 import org.bson.codecs.configuration.CodecConfigurationException;
@@ -35,7 +37,13 @@ public class DataCodecRegistry implements CodecRegistry {
             return codec;
         }
         if (BeanIntrospector.SHARED.findIntrospection(clazz).isPresent()) {
-            codec = new DataCodec<>(dataSerdeRegistry, runtimeEntityRegistry.getEntity(clazz), clazz, registry);
+            RuntimePersistentEntity<T> entity = runtimeEntityRegistry.getEntity(clazz);
+            if (entity.isAnnotationPresent(MappedEntity.class)) {
+                codec = new MappedEntityCodec<>(dataSerdeRegistry, entity, clazz, registry);
+            } else {
+                // Embedded
+                codec = new MappedCodec<>(dataSerdeRegistry, entity, clazz, registry);
+            }
             codecs.put(clazz, codec);
             return codec;
         }
