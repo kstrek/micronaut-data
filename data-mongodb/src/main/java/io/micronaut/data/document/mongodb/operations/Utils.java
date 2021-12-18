@@ -29,27 +29,38 @@ import java.util.Date;
 @Internal
 public final class Utils {
 
+    public static BsonValue entityIdValue(ConversionService<?> conversionService,
+                                          RuntimePersistentEntity<?> persistentEntity,
+                                          Object entity,
+                                          CodecRegistry codecRegistry) {
+        RuntimePersistentProperty<?> identity = persistentEntity.getIdentity();
+        if (identity != null) {
+            BeanProperty property = identity.getProperty();
+            return idValue(conversionService, persistentEntity, property.get(entity), codecRegistry);
+        }
+        throw new IllegalStateException("Cannot determine id!");
+    }
+
     public static BsonValue idValue(ConversionService<?> conversionService,
-                             RuntimePersistentEntity<?> persistentEntity,
-                             Object value,
-                             CodecRegistry codecRegistry) {
+                                    RuntimePersistentEntity<?> persistentEntity,
+                                    Object idValue,
+                                    CodecRegistry codecRegistry) {
         RuntimePersistentProperty<?> identity = persistentEntity.getIdentity();
         if (identity != null) {
             if (identity instanceof Association) {
-                return toBsonValue(conversionService, value, codecRegistry);
+                return toBsonValue(conversionService, idValue, codecRegistry);
             }
             AnnotationValue<BsonRepresentation> bsonRepresentation = identity.getAnnotationMetadata().getAnnotation(BsonRepresentation.class);
             if (bsonRepresentation != null) {
                 BsonType bsonType = bsonRepresentation.getRequiredValue(BsonType.class);
-                return toBsonValue(conversionService, bsonType, value);
+                return toBsonValue(conversionService, bsonType, idValue);
             } else {
                 BeanProperty property = identity.getProperty();
                 Class<?> type = property.getType();
-                Object o = property.get(value);
-                if (type == String.class && o != null) {
-                    return new BsonObjectId(new ObjectId(o.toString()));
+                if (type == String.class && idValue != null) {
+                    return new BsonObjectId(new ObjectId(idValue.toString()));
                 }
-                return toBsonValue(conversionService, value, codecRegistry);
+                return toBsonValue(conversionService, idValue, codecRegistry);
             }
         }
         throw new IllegalStateException("Cannot determine id!");
@@ -60,26 +71,29 @@ public final class Utils {
                            Object value,
                            CodecRegistry codecRegistry) {
         BsonValue id = idValue(conversionService, persistentEntity, value, codecRegistry);
-        return new BsonDocument().append("$eq", id);
+        return new BsonDocument().append("_id", id);
+    }
+
+    static Bson filterByEntityId(ConversionService<?> conversionService,
+                           RuntimePersistentEntity<?> persistentEntity,
+                           Object entity,
+                           CodecRegistry codecRegistry) {
+        BsonValue id = entityIdValue(conversionService, persistentEntity, entity, codecRegistry);
+        return new BsonDocument().append("_id", id);
     }
 
     static Bson filterByIdAndVersion(ConversionService<?> conversionService,
                                      RuntimePersistentEntity persistentEntity,
                                      Object entity,
                                      CodecRegistry codecRegistry) {
-        if (persistentEntity.getIdentity() == null) {
-            throw new IllegalStateException("Cannot determine id!");
-        }
-        Object idValue = persistentEntity.getIdentity().getProperty().get(entity);
         RuntimePersistentProperty version = persistentEntity.getVersion();
         if (version != null) {
-            Object versionValue = version.getProperty().get(entity);
             return Filters.and(
-                    filterById(conversionService, persistentEntity, idValue, codecRegistry),
-                    Filters.eq(getPropertyPersistName(version), versionValue)
+                    filterByEntityId(conversionService, persistentEntity, entity, codecRegistry),
+                    Filters.eq(getPropertyPersistName(version), version.getProperty().get(entity))
             );
         }
-        return filterById(conversionService, persistentEntity, idValue, codecRegistry);
+        return filterByEntityId(conversionService, persistentEntity, entity, codecRegistry);
     }
 
     private static String getPropertyPersistName(PersistentProperty property) {

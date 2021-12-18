@@ -24,7 +24,7 @@ import spock.lang.Shared
 import spock.lang.Specification
 
 @MicronautTest
-class ManyToManyJoinTableSpec extends Specification implements MongoTestPropertyProvider {
+class MongoManyToManySpec extends Specification implements MongoTestPropertyProvider {
     @AutoCleanup
     @Shared
     ApplicationContext applicationContext = ApplicationContext.run(getProperties())

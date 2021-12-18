@@ -724,11 +724,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                                             RuntimePersistentEntity<Object> persistentEntity,
                                             Iterable<Object> child,
                                             RuntimePersistentEntity<Object> childPersistentEntity) {
-//        String joinTableName = runtimeAssociation.getAnnotationMetadata()
-//                .stringValue(ANN_JOIN_TABLE, "name")
-//                .orElseGet(() ->
-//                        runtimeAssociation.getOwner().getNamingStrategy().mappedName(association)
-//                );
         String joinCollectionName = runtimeAssociation.getOwner().getNamingStrategy().mappedName(runtimeAssociation);
         MongoCollection<BsonDocument> collection = getDatabase().getCollection(joinCollectionName, BsonDocument.class);
         List<BsonDocument> associations = new ArrayList<>();
@@ -739,21 +734,14 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
             QUERY_LOG.debug("Executing Mongo 'insertMany' for collection: {} with documents: {}", collection.getNamespace().getFullName(), associations);
         }
         collection.insertMany(associations);
-//        traversePersistentProperties();
-//        InsertOneResult insertOneResult = collection.insertOne(ctx.clientSession, entity);
-//        BsonValue insertedId = insertOneResult.getInsertedId();
-//        BeanProperty<T, Object> property = (BeanProperty<T, Object>) persistentEntity.getIdentity().getProperty();
-//        if (property.get(entity) == null) {
-//            entity = updateEntityId(property, entity, insertedId);
-//        }
     }
 
     private BsonDocument association(MongoCollection<BsonDocument> collection,
                                      Object value, RuntimePersistentEntity<Object> persistentEntity,
                                      Object child, RuntimePersistentEntity<Object> childPersistentEntity) {
         BsonDocument document = new BsonDocument();
-        document.put(persistentEntity.getPersistedName(), Utils.idValue(conversionService, persistentEntity, value, collection.getCodecRegistry()));
-        document.put(childPersistentEntity.getPersistedName(), Utils.idValue(conversionService, childPersistentEntity, child, collection.getCodecRegistry()));
+        document.put(persistentEntity.getPersistedName(), Utils.entityIdValue(conversionService, persistentEntity, value, collection.getCodecRegistry()));
+        document.put(childPersistentEntity.getPersistedName(), Utils.entityIdValue(conversionService, childPersistentEntity, child, collection.getCodecRegistry()));
         return document;
     };
 
