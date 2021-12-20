@@ -6,6 +6,7 @@ import groovy.transform.Memoized
 import io.micronaut.data.document.mongodb.repositories.MongoAuthorRepository
 import io.micronaut.data.document.mongodb.repositories.MongoBasicTypesRepository
 import io.micronaut.data.document.mongodb.repositories.MongoBookRepository
+import io.micronaut.data.document.mongodb.repositories.MongoDomainEventsRepository
 import io.micronaut.data.document.mongodb.repositories.MongoPersonRepository
 import io.micronaut.data.document.mongodb.repositories.MongoSaleRepository
 import io.micronaut.data.document.mongodb.repositories.MongoStudentRepository
@@ -15,12 +16,13 @@ import io.micronaut.data.document.tck.entities.Sale
 import io.micronaut.data.document.tck.repositories.AuthorRepository
 import io.micronaut.data.document.tck.repositories.BasicTypesRepository
 import io.micronaut.data.document.tck.repositories.BookRepository
+import io.micronaut.data.document.tck.repositories.DomainEventsRepository
 import io.micronaut.data.document.tck.repositories.PersonRepository
 import io.micronaut.data.document.tck.repositories.SaleRepository
 import io.micronaut.data.document.tck.repositories.StudentRepository
 import org.bson.BsonDocument
 
-class MongoDocumentRepositorySpec extends AbstractDocumentRepositorySpec implements MongoTestPropertyProvider {
+class   MongoDocumentRepositorySpec extends AbstractDocumentRepositorySpec implements MongoTestPropertyProvider {
 
     MongoClient mongoClient = context.getBean(MongoClient)
 
@@ -87,5 +89,11 @@ class MongoDocumentRepositorySpec extends AbstractDocumentRepositorySpec impleme
     @Override
     SaleRepository getSaleRepository() {
         return context.getBean(MongoSaleRepository)
+    }
+
+    @Memoized
+    @Override
+    DomainEventsRepository getEventsRepository() {
+        return context.getBean(MongoDomainEventsRepository)
     }
 }

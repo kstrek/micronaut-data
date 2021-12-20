@@ -7,12 +7,14 @@ import io.micronaut.data.document.tck.entities.AuthorBooksDto
 import io.micronaut.data.document.tck.entities.BasicTypes
 import io.micronaut.data.document.tck.entities.Book
 import io.micronaut.data.document.tck.entities.BookDto
+import io.micronaut.data.document.tck.entities.DomainEvents
 import io.micronaut.data.document.tck.entities.Page
 import io.micronaut.data.document.tck.entities.Person
 import io.micronaut.data.document.tck.entities.Student
 import io.micronaut.data.document.tck.repositories.AuthorRepository
 import io.micronaut.data.document.tck.repositories.BasicTypesRepository
 import io.micronaut.data.document.tck.repositories.BookRepository
+import io.micronaut.data.document.tck.repositories.DomainEventsRepository
 import io.micronaut.data.document.tck.repositories.PersonRepository
 import io.micronaut.data.document.tck.repositories.SaleRepository
 import io.micronaut.data.document.tck.repositories.StudentRepository
@@ -48,7 +50,7 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
 
     abstract SaleRepository getSaleRepository()
 
-    abstract Map<String, String> getProperties()
+    abstract DomainEventsRepository getEventsRepository()
 
     @AutoCleanup
     @Shared
@@ -934,6 +936,58 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
         then:
             deleted == 1
             personRepository.count(nameEquals("Xyz")) == 0
+    }
+
+    void "test events"() {
+        when:
+            DomainEvents entityUnderTest = new DomainEvents(name:'test')
+            eventsRepository.save(entityUnderTest)
+
+        then:
+            entityUnderTest.prePersist == 1
+            entityUnderTest.postPersist == 1
+            entityUnderTest.preUpdate == 0
+            entityUnderTest.postUpdate == 0
+            entityUnderTest.preRemove == 0
+            entityUnderTest.postRemove == 0
+            entityUnderTest.postLoad == 0
+        when:
+            DomainEvents loaded = eventsRepository.findById(entityUnderTest.id).orElse(null)
+
+        then:
+            loaded.prePersist == 0
+            loaded.postPersist == 0
+            loaded.preUpdate == 0
+            loaded.postUpdate == 0
+            loaded.preRemove == 0
+            loaded.postRemove == 0
+            loaded.postLoad == 1
+
+        when:
+            entityUnderTest.name = 'changed'
+            eventsRepository.update(entityUnderTest)
+
+        then:
+            entityUnderTest.prePersist == 1
+            entityUnderTest.postPersist == 1
+            entityUnderTest.preUpdate == 1
+            entityUnderTest.postUpdate == 1
+            entityUnderTest.preRemove == 0
+            entityUnderTest.postRemove == 0
+            entityUnderTest.postLoad == 0
+
+        when:
+            entityUnderTest.name = 'changed'
+            eventsRepository.delete(entityUnderTest)
+
+        then:
+            entityUnderTest.prePersist == 1
+            entityUnderTest.postPersist == 1
+            entityUnderTest.preUpdate == 1
+            entityUnderTest.postUpdate == 1
+            entityUnderTest.preRemove == 1
+            entityUnderTest.postRemove == 1
+            entityUnderTest.postLoad == 0
     }
 
 }
