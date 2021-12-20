@@ -20,6 +20,8 @@ import io.micronaut.context.ApplicationContext
 import io.micronaut.core.annotation.NonNull
 import io.micronaut.data.document.model.query.builder.MongoDbQueryBuilder
 import io.micronaut.data.document.mongodb.entities.Test
+import io.micronaut.data.document.tck.entities.Settlement
+import io.micronaut.data.document.tck.entities.SettlementPk
 import io.micronaut.data.event.EntityEventListener
 import io.micronaut.data.model.jpa.criteria.PersistentEntityCriteriaBuilder
 import io.micronaut.data.model.jpa.criteria.PersistentEntityCriteriaDelete
@@ -93,6 +95,30 @@ class MongoCriteriaSpec extends Specification {
 
     PersistentEntityRoot createRoot(CriteriaUpdate query) {
         return query.from(Test)
+    }
+
+    void "test embedded predicate"(Specification specification) {
+        given:
+            PersistentEntityCriteriaQuery criteriaQuery = criteriaBuilder.createQuery()
+            PersistentEntityRoot entityRoot = criteriaQuery.from(Settlement)
+            def predicate = specification.toPredicate(entityRoot, criteriaQuery, criteriaBuilder)
+            if (predicate) {
+                criteriaQuery.where(predicate)
+            }
+            String predicateQuery = getQuery(criteriaQuery)
+
+        expect:
+            predicateQuery == expectedWhereQuery
+
+        where:
+            specification << [
+                    { root, query, cb ->
+                        cb.equal(root.get("id"), cb.parameter(SettlementPk))
+                    } as Specification
+            ]
+            expectedWhereQuery << [
+                    '''{'_id.code':{$eq:{$qpidx:0}},'_id.code_id':{$eq:{$qpidx:1}},'_id.county._id.id':{$eq:{$qpidx:2}},'_id.county._id.state_id._id':{$eq:{$qpidx:3}}}''',
+            ]
     }
 
     @Unroll

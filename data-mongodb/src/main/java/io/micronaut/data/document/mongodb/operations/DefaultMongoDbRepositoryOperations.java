@@ -883,12 +883,15 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
             @Override
             protected void execute() throws RuntimeException {
-                Bson filter = entities.stream().filter(d -> !d.vetoed).map(d -> filters.get(d)).collect(Collectors.collectingAndThen(Collectors.toList(), Filters::or));
-                if (QUERY_LOG.isDebugEnabled()) {
-                    QUERY_LOG.debug("Executing Mongo 'deleteMany' with filter: {}", filter.toBsonDocument().toJson());
+                List<Bson> filters = entities.stream().filter(d -> !d.vetoed).map(d -> this.filters.get(d)).collect(Collectors.toList());
+                if (!filters.isEmpty()) {
+                    Bson filter = Filters.or(filters);
+                    if (QUERY_LOG.isDebugEnabled()) {
+                        QUERY_LOG.debug("Executing Mongo 'deleteMany' with filter: {}", filter.toBsonDocument().toJson());
+                    }
+                    DeleteResult deleteResult = collection.deleteMany(ctx.clientSession, filter);
+                    modifiedCount = deleteResult.getDeletedCount();
                 }
-                DeleteResult deleteResult = collection.deleteMany(ctx.clientSession, filter);
-                modifiedCount = deleteResult.getDeletedCount();
                 if (persistentEntity.getVersion() != null) {
                     int expected = (int) entities.stream().filter(d -> !d.vetoed).count();
                     checkOptimisticLocking(expected, (int) modifiedCount);
@@ -902,7 +905,10 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
 
             @Override
             protected void execute() throws RuntimeException {
-                List<T> toInsert = entities.stream().map(d -> d.entity).collect(Collectors.toList());
+                List<T> toInsert = entities.stream().filter(d -> !d.vetoed).map(d -> d.entity).collect(Collectors.toList());
+                if (toInsert.isEmpty()) {
+                    return;
+                }
                 if (QUERY_LOG.isDebugEnabled()) {
                     QUERY_LOG.debug("Executing Mongo 'insertMany' with entities: {}", toInsert);
                 }

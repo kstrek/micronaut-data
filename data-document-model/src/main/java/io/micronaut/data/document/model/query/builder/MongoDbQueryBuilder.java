@@ -166,8 +166,11 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                 value = mapper.apply(value);
             }
             PersistentPropertyPath propertyPath = context.getRequiredProperty(criterion);
-            String path = getPath(propertyPath);
-            obj.put(path, singletonMap(op, valueRepresentation(context, propertyPath, value)));
+            Object finalValue = value;
+            traversePersistentProperties(propertyPath.getAssociations(), propertyPath.getProperty(), (associations, property) -> {
+                String path = asPath(associations, property);
+                obj.put(path, singletonMap(op, valueRepresentation(context, propertyPath, new PersistentPropertyPath(associations, property), finalValue)));
+            });
         };
     }
 
@@ -187,10 +190,17 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     }
 
     private Object valueRepresentation(CriteriaContext context, PersistentPropertyPath propertyPath, Object value) {
+        return valueRepresentation(context, propertyPath, propertyPath, value);
+    }
+
+    private Object valueRepresentation(CriteriaContext context,
+                                       PersistentPropertyPath inPropertyPath,
+                                       PersistentPropertyPath outPropertyPath,
+                                       Object value) {
         if (value instanceof BindingParameter) {
             int index = context.pushParameter(
                     (BindingParameter) value,
-                    newBindingContext(propertyPath)
+                    newBindingContext(inPropertyPath, outPropertyPath)
             );
             return singletonMap("$qpidx", index);
         } else {
@@ -389,7 +399,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                             singletonMap("$replaceRoot", singletonMap("newRoot", "$" + joinedCollectionName))
                     );
                 } else {
-                    String currentPath = asPath(null, propertyPath.getAssociations(), propertyPath.getProperty());
+                    String currentPath = asPath(propertyPath.getAssociations(), propertyPath.getProperty());
                     if (association.isForeignKey()) {
                         String mappedBy = association.getAnnotationMetadata().stringValue(Relation.class, "mappedBy").get();
                         PersistentPropertyPath mappedByPath = association.getAssociatedEntity().getPropertyPath(mappedBy);
@@ -403,7 +413,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                         List<String> localMatchFields = new ArrayList<>();
                         List<String> foreignMatchFields = new ArrayList<>();
                         traversePersistentProperties(currentLookup.persistentEntity.getIdentity(), (associations, p) -> {
-                            String fieldPath = asPath(null, associations, p);
+                            String fieldPath = asPath(associations, p);
                             localMatchFields.add(fieldPath);
                         });
 
@@ -411,7 +421,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                         mappedAssociations.add((Association) mappedByPath.getProperty());
 
                         traversePersistentProperties(mappedAssociations, currentLookup.persistentEntity.getIdentity(), (associations, p) -> {
-                            String fieldPath = asPath(null, associations, p);
+                            String fieldPath = asPath(associations, p);
                             foreignMatchFields.add(fieldPath);
                         });
 
@@ -429,11 +439,11 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                         List<String> localMatchFields = new ArrayList<>();
                         List<String> foreignMatchFields = new ArrayList<>();
                         traversePersistentProperties(mappedAssociations, lookupStage.persistentEntity.getIdentity(), (associations, p) -> {
-                            String fieldPath = asPath(null, associations, p);
+                            String fieldPath = asPath(associations, p);
                             localMatchFields.add(fieldPath);
                         });
                         traversePersistentProperties(lookupStage.persistentEntity.getIdentity(), (associations, p) -> {
-                            String fieldPath = asPath(null, associations, p);
+                            String fieldPath = asPath(associations, p);
                             foreignMatchFields.add(fieldPath);
                         });
 
@@ -463,7 +473,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         }
         List<String> fields = new ArrayList<>();
         traversePersistentProperties(entity.getIdentity(), (associations, property) -> {
-            fields.add(asPath(namingStrategy, associations, property));
+            fields.add(asPath(associations, property));
         });
         return fields;
     }
@@ -480,7 +490,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         }
         List<String> fields = new ArrayList<>();
         traversePersistentProperties(identity, (associations, property) -> {
-            fields.add(asPath(namingStrategy, associations, property));
+            fields.add(asPath(associations, property));
         });
         return fields;
     }
@@ -498,7 +508,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
         return Collections.emptyList();
     }
 
-    private String asPath(NamingStrategy namingStrategy, List<Association> associations, PersistentProperty property) {
+    private String asPath(List<Association> associations, PersistentProperty property) {
         if (associations.isEmpty()) {
             return getPropertyPersistName(property);
         }
@@ -922,9 +932,13 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     }
 
     private BindingParameter.BindingContext newBindingContext(@Nullable PersistentPropertyPath ref) {
+        return newBindingContext(ref, ref);
+    }
+
+    private BindingParameter.BindingContext newBindingContext(@Nullable PersistentPropertyPath in, @Nullable PersistentPropertyPath out) {
         return BindingParameter.BindingContext.create()
-                .incomingMethodParameterProperty(ref)
-                .outgoingQueryParameterProperty(ref);
+                .incomingMethodParameterProperty(in)
+                .outgoingQueryParameterProperty(out);
     }
 
     /**

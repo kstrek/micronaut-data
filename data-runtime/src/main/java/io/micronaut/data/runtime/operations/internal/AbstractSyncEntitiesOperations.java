@@ -80,12 +80,6 @@ public abstract class AbstractSyncEntitiesOperations<Ctx extends OperationContex
 
     @Override
     protected void collectAutoPopulatedPreviousValues() {
-//        for (Data d : entities) {
-//            if (d.vetoed) {
-//                continue;
-//            }
-//            d.previousValues = dbOperation.collectAutoPopulatedPreviousValues(persistentEntity, d.entity);
-//        }
     }
 
     @Override
