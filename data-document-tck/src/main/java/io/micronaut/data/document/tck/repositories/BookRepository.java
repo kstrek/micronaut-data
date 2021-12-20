@@ -10,6 +10,8 @@ import io.micronaut.data.document.tck.entities.AuthorBooksDto;
 import io.micronaut.data.document.tck.entities.Book;
 import io.micronaut.data.document.tck.entities.BookDto;
 import io.micronaut.data.model.DataType;
+import io.micronaut.data.model.Page;
+import io.micronaut.data.model.Pageable;
 import io.micronaut.data.repository.PageableRepository;
 
 import java.util.ArrayList;
@@ -24,6 +26,9 @@ public abstract class BookRepository implements PageableRepository<Book, String>
     public BookRepository(AuthorRepository authorRepository) {
         this.authorRepository = authorRepository;
     }
+
+    @Join("author")
+    public abstract Page<Book> findByTotalPagesGreaterThan(int totalPages, Pageable pageable);
 
     @Override
     @Join("author.books")

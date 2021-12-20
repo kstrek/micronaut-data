@@ -5,13 +5,18 @@ import io.micronaut.core.annotation.Nullable;
 import io.micronaut.data.annotation.Id;
 import io.micronaut.data.document.tck.entities.Person;
 import io.micronaut.data.model.Pageable;
+import io.micronaut.data.model.Slice;
+import io.micronaut.data.model.Sort;
 import io.micronaut.data.repository.CrudRepository;
+import io.micronaut.data.repository.PageableRepository;
 import io.micronaut.data.repository.jpa.JpaSpecificationExecutor;
 import io.micronaut.data.repository.jpa.criteria.PredicateSpecification;
 
 import java.util.List;
 
-public interface PersonRepository extends CrudRepository<Person, String>, JpaSpecificationExecutor<Person> {
+public interface PersonRepository extends CrudRepository<Person, String>, PageableRepository<Person, String>, JpaSpecificationExecutor<Person> {
+
+    List<Person> listTop10(Sort sort);
 
     Person get(String id);
 
@@ -33,6 +38,14 @@ public interface PersonRepository extends CrudRepository<Person, String>, JpaSpe
     long updateByName(String name, int age);
 
     List<Person> findByNameRegex(String name);
+
+    List<Person> findByNameRegex(String name, Pageable pageable);
+
+    io.micronaut.data.model.Page<Person> getByNameRegex(String name, Pageable pageable);
+
+    io.micronaut.data.model.Page<Person> findAllByNameRegex(String name, Pageable pageable);
+
+    Slice<Person> queryByNameRegex(String name, Pageable pageable);
 
     Long deleteByNameRegex(String name);
 

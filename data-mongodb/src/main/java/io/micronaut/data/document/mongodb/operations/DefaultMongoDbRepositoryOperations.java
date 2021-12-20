@@ -21,12 +21,9 @@ import io.micronaut.core.type.Argument;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
 import io.micronaut.data.exceptions.DataAccessException;
-import io.micronaut.data.model.Association;
 import io.micronaut.data.model.DataType;
-import io.micronaut.data.model.Embedded;
 import io.micronaut.data.model.Page;
 import io.micronaut.data.model.Pageable;
-import io.micronaut.data.model.PersistentEntity;
 import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.PersistentPropertyPath;
 import io.micronaut.data.model.Sort;
@@ -70,13 +67,11 @@ import org.slf4j.Logger;
 import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -462,45 +457,57 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
                 return Collections.singletonList(getCount(clientSession, database, type, resultType, persistentEntity, filter, pipeline));
             }
             if (pipeline == null) {
-                Bson sort = null;
-                int skip = 0;
-                int limit = 0;
-                if (pageable != Pageable.UNPAGED) {
-                    skip = (int) pageable.getOffset();
-                    limit = pageable.getSize();
-                    Sort pageableSort = pageable.getSort();
-                    if (pageableSort.isSorted()) {
-                        sort = pageableSort.getOrderBy().stream().map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty())).collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
-
-
-                    }
-                }
-                if (QUERY_LOG.isDebugEnabled()) {
-                    QUERY_LOG.debug("Executing Mongo 'find' with filter: {} skip: {} limit: {}", filter.toBsonDocument().toJson(), skip, limit);
-                }
-                return getCollection(database, persistentEntity, resultType).find(clientSession, filter, resultType).skip(skip).limit(Math.max(limit, 0)).sort(sort).into(new ArrayList<>(limit > 0 ? limit : 20));
+                return findAll(clientSession, database, pageable, resultType, persistentEntity, filter);
             }
-            int limit = 0;
-            if (pageable != Pageable.UNPAGED) {
-                int skip = (int) pageable.getOffset();
-                limit = pageable.getSize();
-                Sort pageableSort = pageable.getSort();
-                if (pageableSort.isSorted()) {
-                    Bson sort = pageableSort.getOrderBy().stream().map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty())).collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
-                    addStageToPipelineBefore(pipeline, sort.toBsonDocument(), "$limit", "$skip");
-                }
-                if (skip > 0) {
-                    pipeline.add(new BsonDocument().append("$skip", new BsonInt32(skip)));
-                }
-                if (limit > 0) {
-                    pipeline.add(new BsonDocument().append("$limit", new BsonInt32(limit)));
-                }
-            }
-            if (QUERY_LOG.isDebugEnabled()) {
-                QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
-            }
-            return getCollection(database, persistentEntity, resultType).aggregate(clientSession, pipeline, resultType).into(new ArrayList<>(limit > 0 ? limit : 20));
+            return findAllAggregated(clientSession, database, pageable, resultType, persistentEntity, pipeline);
         }
+    }
+
+    private <T, R> ArrayList<R> findAllAggregated(ClientSession clientSession, MongoDatabase database, Pageable pageable, Class<R> resultType, RuntimePersistentEntity<T> persistentEntity, List<BsonDocument> pipeline) {
+        int limit = 0;
+        if (pageable != Pageable.UNPAGED) {
+            int skip = (int) pageable.getOffset();
+            limit = pageable.getSize();
+            Sort pageableSort = pageable.getSort();
+            if (pageableSort.isSorted()) {
+                Bson sort = pageableSort.getOrderBy().stream().map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty())).collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
+                BsonDocument sortStage = new BsonDocument().append("$sort", sort.toBsonDocument());
+                addStageToPipelineBefore(pipeline, sortStage, "$limit", "$skip");
+            }
+            if (skip > 0) {
+                pipeline.add(new BsonDocument().append("$skip", new BsonInt32(skip)));
+            }
+            if (limit > 0) {
+                pipeline.add(new BsonDocument().append("$limit", new BsonInt32(limit)));
+            }
+        }
+        if (QUERY_LOG.isDebugEnabled()) {
+            QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
+        }
+        return getCollection(database, persistentEntity, resultType).aggregate(clientSession, pipeline, resultType).into(new ArrayList<>(limit > 0 ? limit : 20));
+    }
+
+    private <T, R> List<R> findAll(ClientSession clientSession, MongoDatabase database, Pageable pageable, Class<R> resultType, RuntimePersistentEntity<T> persistentEntity, Bson filter) {
+        Bson sort = null;
+        int skip = 0;
+        int limit = 0;
+        if (pageable != Pageable.UNPAGED) {
+            skip = (int) pageable.getOffset();
+            limit = pageable.getSize();
+            Sort pageableSort = pageable.getSort();
+            if (pageableSort.isSorted()) {
+                sort = pageableSort.getOrderBy().stream().map(order -> order.isAscending() ? Sorts.ascending(order.getProperty()) : Sorts.descending(order.getProperty())).collect(Collectors.collectingAndThen(Collectors.toList(), Sorts::orderBy));
+            }
+        }
+        if (QUERY_LOG.isDebugEnabled()) {
+            QUERY_LOG.debug("Executing Mongo 'find' with filter: {} skip: {} limit: {}", filter.toBsonDocument().toJson(), skip, limit);
+        }
+        return getCollection(database, persistentEntity, resultType)
+                .find(clientSession, filter, resultType)
+                .skip(skip)
+                .limit(Math.max(limit, 0))
+                .sort(sort)
+                .into(new ArrayList<>(limit > 0 ? limit : 20));
     }
 
     private <T, R> R getCount(ClientSession clientSession, MongoDatabase mongoDatabase, Class<T> type, Class<R> resultType, RuntimePersistentEntity<T> persistentEntity, Bson filter, List<BsonDocument> pipeline) {
@@ -714,8 +721,19 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
     }
 
     @Override
-    public void persistManyAssociation(MongoDbOperationContext ctx, RuntimeAssociation runtimeAssociation, Object value, RuntimePersistentEntity<Object> persistentEntity, Object child, RuntimePersistentEntity<Object> childPersistentEntity) {
-        throw new IllegalStateException();
+    public void persistManyAssociation(MongoDbOperationContext ctx,
+                                       RuntimeAssociation runtimeAssociation,
+                                       Object value,
+                                       RuntimePersistentEntity<Object> persistentEntity,
+                                       Object child,
+                                       RuntimePersistentEntity<Object> childPersistentEntity) {
+        String joinCollectionName = runtimeAssociation.getOwner().getNamingStrategy().mappedName(runtimeAssociation);
+        MongoCollection<BsonDocument> collection = getDatabase().getCollection(joinCollectionName, BsonDocument.class);
+        BsonDocument association = association(collection, value, persistentEntity, child, childPersistentEntity);
+        if (QUERY_LOG.isDebugEnabled()) {
+            QUERY_LOG.debug("Executing Mongo 'insertOne' for collection: {} with document: {}", collection.getNamespace().getFullName(), association);
+        }
+        collection.insertOne(association);
     }
 
     @Override
@@ -743,44 +761,6 @@ public class DefaultMongoDbRepositoryOperations extends AbstractRepositoryOperat
         document.put(persistentEntity.getPersistedName(), Utils.entityIdValue(conversionService, persistentEntity, value, collection.getCodecRegistry()));
         document.put(childPersistentEntity.getPersistedName(), Utils.entityIdValue(conversionService, childPersistentEntity, child, collection.getCodecRegistry()));
         return document;
-    };
-
-    private void traversePersistentProperties(PersistentProperty property, BiConsumer<List<Association>, PersistentProperty> consumer) {
-        traversePersistentProperties(Collections.emptyList(), property, consumer);
-    }
-
-    private void traversePersistentProperties(List<Association> associations,
-                                              PersistentProperty property,
-                                              BiConsumer<List<Association>, PersistentProperty> consumerProperty) {
-        if (property instanceof Embedded) {
-            Embedded embedded = (Embedded) property;
-            PersistentEntity embeddedEntity = embedded.getAssociatedEntity();
-            Collection<? extends PersistentProperty> embeddedProperties = embeddedEntity.getPersistentProperties();
-            List<Association> newAssociations = new ArrayList<>(associations);
-            newAssociations.add((Association) property);
-            for (PersistentProperty embeddedProperty : embeddedProperties) {
-                traversePersistentProperties(newAssociations, embeddedProperty, consumerProperty);
-            }
-        } else if (property instanceof Association) {
-            Association association = (Association) property;
-            if (association.isForeignKey()) {
-                return;
-            }
-            List<Association> newAssociations = new ArrayList<>(associations);
-            newAssociations.add((Association) property);
-            PersistentEntity associatedEntity = association.getAssociatedEntity();
-            PersistentProperty assocIdentity = associatedEntity.getIdentity();
-            if (assocIdentity == null) {
-                throw new IllegalStateException("Identity cannot be missing for: " + associatedEntity);
-            }
-            if (assocIdentity instanceof Association) {
-                traversePersistentProperties(newAssociations, assocIdentity, consumerProperty);
-            } else {
-                consumerProperty.accept(newAssociations, assocIdentity);
-            }
-        } else {
-            consumerProperty.accept(associations, property);
-        }
     }
 
     private <T> MongoDbEntityOperation<T> createMongoDbInsertOneOperation(MongoDbOperationContext ctx, RuntimePersistentEntity<T> persistentEntity, T entity) {

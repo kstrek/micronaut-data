@@ -20,6 +20,7 @@ import io.micronaut.data.document.tck.repositories.SaleRepository
 import io.micronaut.data.document.tck.repositories.StudentRepository
 import io.micronaut.data.exceptions.OptimisticLockException
 import io.micronaut.data.model.Pageable
+import io.micronaut.data.model.Slice
 import io.micronaut.data.model.Sort
 import io.micronaut.data.repository.jpa.criteria.DeleteSpecification
 import io.micronaut.data.repository.jpa.criteria.PredicateSpecification
@@ -988,6 +989,156 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
             entityUnderTest.preRemove == 1
             entityUnderTest.postRemove == 1
             entityUnderTest.postLoad == 0
+    }
+
+    def createPeopleData() {
+        List<Person> people = []
+        50.times { num ->
+            ('A'..'Z').each {
+                people << new Person(name: it * 5 + num)
+            }
+        }
+        personRepository.saveAll(people)
+    }
+
+    void "test sort"() {
+        given:
+            createPeopleData()
+        when: "Sorted results are returned"
+            def results = personRepository.listTop10(
+                    Sort.unsorted().order("name", Sort.Order.Direction.DESC)
+            )
+
+        then: "The results are correct"
+            results.size() == 10
+            results[0].name.startsWith("Z")
+    }
+
+    void "test pageable list"() {
+        given:
+            createPeopleData()
+        when: "All the people are count"
+            def count = personRepository.count()
+
+        then: "the count is correct"
+            count == 1300
+
+        when: "10 people are paged"
+            def pageable = Pageable.from(0, 10)
+            io.micronaut.data.model.Page<Person> page = personRepository.findAll(pageable)
+
+        then: "The data is correct"
+            page.content.size() == 10
+            page.content.every() { it instanceof Person }
+            page.content[0].name.startsWith("A")
+            page.content[1].name.startsWith("B")
+            page.totalSize == 1300
+            page.totalPages == 130
+            page.nextPageable().offset == 10
+            page.nextPageable().size == 10
+
+        when: "The next page is selected"
+            pageable = page.nextPageable()
+            page = personRepository.findAll(pageable)
+
+        then: "it is correct"
+            page.offset == 10
+            page.pageNumber == 1
+            page.content[0].name.startsWith("K")
+            page.content.size() == 10
+
+        when: "The previous page is selected"
+            pageable = page.previousPageable()
+            page = personRepository.findAll(pageable)
+
+        then: "it is correct"
+            page.offset == 0
+            page.pageNumber == 0
+            page.content[0].name.startsWith("A")
+            page.content.size() == 10
+    }
+
+    void "test pageable sort"() {
+        given:
+            createPeopleData()
+        when: "All the people are count"
+            def count = personRepository.count()
+
+        then: "the count is correct"
+            count == 1300
+
+        when: "10 people are paged"
+            io.micronaut.data.model.Page<Person> page = personRepository.findAll(
+                    Pageable.from(0, 10)
+                            .order("name", Sort.Order.Direction.DESC)
+            )
+
+        then: "The data is correct"
+            page.content.size() == 10
+            page.content.every() { it instanceof Person }
+            page.content[0].name.startsWith("Z")
+            page.content[1].name.startsWith("Z")
+            page.totalSize == 1300
+            page.totalPages == 130
+            page.nextPageable().offset == 10
+            page.nextPageable().size == 10
+
+        when: "The next page is selected"
+            page = personRepository.findAll(page.nextPageable())
+
+        then: "it is correct"
+            page.offset == 10
+            page.pageNumber == 1
+            page.content[0].name.startsWith("Z")
+    }
+
+    void "test pageable findBy"() {
+        given:
+            createPeopleData()
+        when: "People are searched for"
+            def pageable = Pageable.from(0, 10)
+            io.micronaut.data.model.Page<Person> page = personRepository.getByNameRegex(/A.*/, pageable)
+            io.micronaut.data.model.Page<Person> page2 = personRepository.findAllByNameRegex(/A.*/, pageable)
+            Slice<Person> slice = personRepository.queryByNameRegex(/A.*/, pageable)
+
+        then: "The page is correct"
+            page.offset == 0
+            page.pageNumber == 0
+            page.totalSize == 50
+            page2.totalSize == page.totalSize
+            slice.offset == 0
+            slice.pageNumber == 0
+            slice.size == 10
+            slice.content
+            page.content
+
+        when: "The next page is retrieved"
+            page = personRepository.findAllByNameRegex(/A.*/, page.nextPageable())
+
+        then: "it is correct"
+            page.offset == 10
+            page.pageNumber == 1
+            page.totalSize == 50
+            page.nextPageable().offset == 20
+            page.nextPageable().number == 2
+    }
+
+    void "test total size of find with left join"() {
+        given:
+            def books = bookRepository.saveAll([
+                    new Book(title: "Book 1", totalPages: 100),
+                    new Book(title: "Book 2", totalPages: 100)
+            ])
+
+        when:
+            def page = bookRepository.findByTotalPagesGreaterThan(0, Pageable.from(0, books.size()))
+
+        then:
+            page.getContent().size() == books.size()
+            page.getTotalSize() == books.size()
+
+        cleanup:
+            bookRepository.deleteAll()
     }
 
 }
