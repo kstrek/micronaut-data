@@ -40,7 +40,7 @@ import org.bson.codecs.pojo.annotations.BsonRepresentation
 import org.bson.types.ObjectId
 import spock.lang.Specification
 
-@MicronautTest
+@MicronautTest(transactional = false)
 class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
 
     @Inject
@@ -54,7 +54,7 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
 
     void "test ObjectId id"() {
         given:
-            def database = mongoClient.getDatabase("default")
+            def database = mongoClient.getDatabase("test")
         when:
             def persisted = dbRepositoryOperations.persist(insertOperation(new EntityObjectId(value: "Xyz")))
         then:
@@ -73,7 +73,7 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
 
     void "test simple UUID id"() {
         given:
-            def database = mongoClient.getDatabase("default")
+            def database = mongoClient.getDatabase("test")
         when:
             def persisted = dbRepositoryOperations.persist(insertOperation(new EntityUUID(value: "Xyz")))
         then:
@@ -92,7 +92,7 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
 
     void "test Long id"() {
         given:
-            def database = mongoClient.getDatabase("default")
+            def database = mongoClient.getDatabase("test")
             def id = 123L
         when:
             dbRepositoryOperations.persist(insertOperation(new EntityLongId(myId: id, value: "Xyz")))
@@ -109,7 +109,7 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
 
     void "test composite id"() {
         given:
-            def database = mongoClient.getDatabase("default")
+            def database = mongoClient.getDatabase("test")
             def id = new CustomId(a: 1L, b: 2L)
         when:
             dbRepositoryOperations.persist(insertOperation(new EntityCustomId(myId: id, value: "Xyz")))

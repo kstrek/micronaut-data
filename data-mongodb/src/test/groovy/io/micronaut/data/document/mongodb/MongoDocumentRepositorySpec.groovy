@@ -39,7 +39,7 @@ class   MongoDocumentRepositorySpec extends AbstractDocumentRepositorySpec imple
             sale.quantity.amount == 123
 
         when:
-            def bsonSale = mongoClient.getDatabase("default").getCollection("sale", BsonDocument).find().first()
+            def bsonSale = mongoClient.getDatabase("test").getCollection("sale", BsonDocument).find().first()
         then:
             bsonSale.size() == 2
             bsonSale.get("quantity").isInt32()

@@ -8,7 +8,9 @@ import io.micronaut.data.repository.CrudRepository;
 import java.util.Optional;
 
 public interface CitizenRepository extends CrudRepository<Citizen, String> {
-    @Join(value = "settlements")
+    @Join(value = "settlements.id.county")
+    @Join(value = "settlements.zone")
+    @Join(value = "settlements.settlementType")
     @Override
     Optional<Citizen> findById(@NonNull String id);
 

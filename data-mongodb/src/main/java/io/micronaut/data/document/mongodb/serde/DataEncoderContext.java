@@ -13,6 +13,7 @@ import io.micronaut.data.model.runtime.convert.AttributeConverter;
 import io.micronaut.serde.Encoder;
 import io.micronaut.serde.Serializer;
 import io.micronaut.serde.bson.custom.CodecBsonDecoder;
+import io.micronaut.serde.config.naming.PropertyNamingStrategy;
 import io.micronaut.serde.exceptions.SerdeException;
 import io.micronaut.serde.reference.PropertyReference;
 import io.micronaut.serde.reference.SerializationReference;
@@ -130,6 +131,11 @@ public class DataEncoderContext implements Serializer.EncoderContext {
             };
         }
         return parent.findSerializer(type);
+    }
+
+    @Override
+    public <D extends PropertyNamingStrategy> D findNamingStrategy(Class<? extends D> namingStrategyClass) throws SerdeException {
+        return parent.findNamingStrategy(namingStrategyClass);
     }
 
     @Override

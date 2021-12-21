@@ -10,6 +10,7 @@ import io.micronaut.data.repository.CrudRepository;
 
 import javax.validation.constraints.NotNull;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 public interface AuthorRepository extends CrudRepository<Author, String> {
 
@@ -30,4 +31,7 @@ public interface AuthorRepository extends CrudRepository<Author, String> {
 
     @Join("books")
     Author searchByName(String name);
+
+    Stream<Author> queryByNameRegex(String name);
+
 }

@@ -26,6 +26,7 @@ import io.micronaut.data.repository.jpa.criteria.DeleteSpecification
 import io.micronaut.data.repository.jpa.criteria.PredicateSpecification
 import io.micronaut.data.repository.jpa.criteria.QuerySpecification
 import io.micronaut.data.repository.jpa.criteria.UpdateSpecification
+import io.micronaut.transaction.SynchronousTransactionManager
 import jakarta.persistence.criteria.CriteriaBuilder
 import jakarta.persistence.criteria.CriteriaUpdate
 import jakarta.persistence.criteria.Predicate
@@ -33,6 +34,8 @@ import jakarta.persistence.criteria.Root
 import spock.lang.AutoCleanup
 import spock.lang.Shared
 import spock.lang.Specification
+
+import java.util.stream.Collectors
 
 import static io.micronaut.data.document.tck.repositories.PersonRepository.Specifications.nameEquals
 import static io.micronaut.data.repository.jpa.criteria.QuerySpecification.where
@@ -56,6 +59,9 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
     @AutoCleanup
     @Shared
     ApplicationContext context = ApplicationContext.run(properties)
+
+    @Shared
+    Optional<SynchronousTransactionManager<Object>> transactionManager = context.findBean(SynchronousTransactionManager)
 
     protected void setupBooks() {
         // book without an author
@@ -1139,6 +1145,31 @@ abstract class AbstractDocumentRepositorySpec extends Specification {
 
         cleanup:
             bookRepository.deleteAll()
+    }
+
+    void "test stream string comparison methods"() {
+        if (!transactionManager.isPresent()) {
+            return
+        }
+        given:
+            setupBooks()
+
+        when:
+            def authors = transactionManager.get().executeRead {
+                authorRepository.queryByNameRegex(/.*e.*/).collect(Collectors.toList())
+            }
+
+        then:
+            authors.size() == 2
+
+        when:
+
+            def emptyAuthors = transactionManager.get().executeRead {
+                authorRepository.queryByNameRegex(/.*x.*/).collect(Collectors.toList())
+            }
+
+        then:
+            emptyAuthors.size() == 0
     }
 
 }
