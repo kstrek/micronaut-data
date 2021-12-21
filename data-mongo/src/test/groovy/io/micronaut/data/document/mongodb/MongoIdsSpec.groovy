@@ -23,11 +23,10 @@ import io.micronaut.data.annotation.AutoPopulated
 import io.micronaut.data.annotation.GeneratedValue
 import io.micronaut.data.annotation.Id
 import io.micronaut.data.annotation.MappedEntity
-import io.micronaut.data.annotation.MappedProperty
-import io.micronaut.data.model.runtime.InsertOperation
-import io.micronaut.data.model.runtime.StoredQuery
 import io.micronaut.data.document.mongodb.operations.DefaultMongoRepositoryOperations
 import io.micronaut.data.document.mongodb.operations.DefaultReactiveMongoDbRepositoryOperations
+import io.micronaut.data.model.runtime.InsertOperation
+import io.micronaut.data.model.runtime.StoredQuery
 import io.micronaut.serde.annotation.Serdeable
 import io.micronaut.test.extensions.spock.annotation.MicronautTest
 import jakarta.inject.Inject
@@ -132,7 +131,6 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
 
         @GeneratedValue
         @Id
-        @MappedProperty("_id")
         ObjectId myId
 
         String value
@@ -143,7 +141,6 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
     static class EntityLongId {
 
         @Id
-        @MappedProperty("_id")
         Long myId
 
         String value
@@ -154,7 +151,6 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
     static class EntityCustomId {
 
         @Id
-        @MappedProperty("_id")
         CustomId myId
 
         String value
@@ -166,7 +162,6 @@ class MongoIdsSpec extends Specification implements MongoTestPropertyProvider {
         @BsonRepresentation(BsonType.STRING)
         @AutoPopulated
         @Id
-        @MappedProperty("_id")
         UUID myId
 
         String value
