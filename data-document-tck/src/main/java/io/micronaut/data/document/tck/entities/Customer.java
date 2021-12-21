@@ -2,13 +2,11 @@ package io.micronaut.data.document.tck.entities;
 
 import io.micronaut.data.annotation.Id;
 import io.micronaut.data.annotation.MappedEntity;
-import io.micronaut.data.annotation.MappedProperty;
 
 @MappedEntity
 public class Customer {
 
     @Id
-    @MappedProperty("_id")
     private String id;
 
     private String firstName;

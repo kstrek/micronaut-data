@@ -4,6 +4,7 @@ import io.micronaut.context.BeanContext;
 import io.micronaut.context.annotation.Replaces;
 import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.core.type.Argument;
+import io.micronaut.data.document.serde.IdPropertyNamingStrategy;
 import io.micronaut.data.document.serde.IdSerializer;
 import io.micronaut.data.document.serde.ManyRelationSerializer;
 import io.micronaut.data.document.serde.OneRelationSerializer;
@@ -30,6 +31,8 @@ public class DataSerdeRegistry extends DefaultSerdeRegistry {
 
     private final RuntimeEntityRegistry runtimeEntityRegistry;
     private final AttributeConverterRegistry attributeConverterRegistry;
+
+    public final static IdPropertyNamingStrategy ID_PROPERTY_NAMING_STRATEGY = element -> "_id";
 
     public DataSerdeRegistry(BeanContext beanContext,
                              ObjectSerializer objectSerializer,

@@ -35,7 +35,6 @@ public class Shipment {
     public Shipment() {
     }
 
-    @MappedProperty("_id")
     @EmbeddedId
     private ShipmentId shipmentId;
 

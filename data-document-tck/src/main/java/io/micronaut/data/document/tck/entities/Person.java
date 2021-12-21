@@ -23,7 +23,6 @@ import io.micronaut.data.annotation.MappedProperty;
 
 @MappedEntity
 public class Person {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     private String id;

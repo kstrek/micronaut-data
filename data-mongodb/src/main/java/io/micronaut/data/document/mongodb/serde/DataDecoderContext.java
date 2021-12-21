@@ -7,6 +7,7 @@ import io.micronaut.data.annotation.GeneratedValue;
 import io.micronaut.data.annotation.MappedProperty;
 import io.micronaut.data.document.serde.CustomConverterDeserializer;
 import io.micronaut.data.document.serde.IdDeserializer;
+import io.micronaut.data.document.serde.IdPropertyNamingStrategy;
 import io.micronaut.data.model.runtime.AttributeConverterRegistry;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.convert.AttributeConverter;
@@ -117,6 +118,9 @@ public class DataDecoderContext implements Deserializer.DecoderContext {
 
     @Override
     public <D extends PropertyNamingStrategy> D findNamingStrategy(Class<? extends D> namingStrategyClass) throws SerdeException {
+        if (namingStrategyClass == IdPropertyNamingStrategy.class) {
+            return (D) DataSerdeRegistry.ID_PROPERTY_NAMING_STRATEGY;
+        }
         return parent.findNamingStrategy(namingStrategyClass);
     }
 

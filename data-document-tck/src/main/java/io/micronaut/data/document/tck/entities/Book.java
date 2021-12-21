@@ -38,7 +38,6 @@ import java.util.List;
 public class Book {
     @Id
     @GeneratedValue
-    @MappedProperty("_id")
     private String id;
     private String title;
     private int totalPages;

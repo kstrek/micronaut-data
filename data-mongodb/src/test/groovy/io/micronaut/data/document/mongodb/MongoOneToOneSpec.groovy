@@ -75,7 +75,6 @@ interface CRefARepository extends CrudRepository<CRefA, String> {
 
 @MappedEntity("one_a")
 class CRefA {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -85,7 +84,6 @@ class CRefA {
 
 @MappedEntity("one_b")
 class CRefB {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -95,7 +93,6 @@ class CRefB {
 
 @MappedEntity("one_c")
 class CRefC {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id

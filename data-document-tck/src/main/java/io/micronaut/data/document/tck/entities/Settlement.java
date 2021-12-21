@@ -8,7 +8,6 @@ import io.micronaut.data.annotation.Relation;
 @MappedEntity("comp_settlement")
 public class Settlement {
 
-    @MappedProperty("_id")
     @EmbeddedId
     private SettlementPk id;
     @MappedProperty

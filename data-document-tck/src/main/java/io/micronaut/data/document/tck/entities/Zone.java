@@ -6,7 +6,6 @@ import io.micronaut.data.annotation.MappedProperty;
 
 @MappedEntity("comp_zone")
 public class Zone {
-    @MappedProperty("_id")
     @Id
     private Long id;
     @MappedProperty

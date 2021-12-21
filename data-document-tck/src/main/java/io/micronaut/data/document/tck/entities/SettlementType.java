@@ -6,7 +6,6 @@ import io.micronaut.data.annotation.MappedProperty;
 
 @MappedEntity("comp_sett_type")
 public class SettlementType {
-    @MappedProperty("_id")
     @Id
     private Long id;
     @MappedProperty

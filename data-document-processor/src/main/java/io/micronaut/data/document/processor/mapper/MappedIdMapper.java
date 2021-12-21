@@ -3,6 +3,7 @@ package io.micronaut.data.document.processor.mapper;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.data.annotation.Id;
 import io.micronaut.data.document.serde.IdDeserializer;
+import io.micronaut.data.document.serde.IdPropertyNamingStrategy;
 import io.micronaut.data.document.serde.IdSerializer;
 import io.micronaut.inject.annotation.TypedAnnotationMapper;
 import io.micronaut.inject.visitor.VisitorContext;
@@ -24,6 +25,7 @@ public class MappedIdMapper implements TypedAnnotationMapper<Id> {
                 AnnotationValue.builder(SerdeConfig.class)
                         .member(SerdeConfig.SERIALIZER_CLASS, IdSerializer.class.getName())
                         .member(SerdeConfig.DESERIALIZER_CLASS, IdDeserializer.class.getName())
+                        .member(SerdeConfig.RUNTIME_NAMING, IdPropertyNamingStrategy.class.getName())
                         .build()
         );
     }

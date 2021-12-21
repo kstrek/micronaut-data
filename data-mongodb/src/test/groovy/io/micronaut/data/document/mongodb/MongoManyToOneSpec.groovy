@@ -6,7 +6,6 @@ import io.micronaut.data.annotation.GeneratedValue
 import io.micronaut.data.annotation.Id
 import io.micronaut.data.annotation.Join
 import io.micronaut.data.annotation.MappedEntity
-import io.micronaut.data.annotation.MappedProperty
 import io.micronaut.data.annotation.Relation
 import io.micronaut.data.document.mongodb.annotation.MongoDbRepository
 import io.micronaut.data.model.Page
@@ -76,7 +75,6 @@ interface RefARepository extends CrudRepository<RefA, String> {
 @ToString
 @MappedEntity("ref_a")
 class RefA {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -87,7 +85,6 @@ class RefA {
 @ToString
 @MappedEntity("ref_b")
 class RefB {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -98,7 +95,6 @@ class RefB {
 @ToString
 @MappedEntity("ref_c")
 class RefC {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id

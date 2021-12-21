@@ -184,6 +184,9 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     }
 
     private String getPropertyPersistName(PersistentProperty property) {
+        if (property.getOwner().getIdentity() == property) {
+            return "_id";
+        }
         return property.getAnnotationMetadata()
                 .stringValue(SerdeConfig.class, SerdeConfig.PROPERTY)
                 .orElseGet(property::getName);

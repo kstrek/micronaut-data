@@ -13,7 +13,6 @@ public class Sale {
     @MappedProperty(converter = QuantityAttributeConverter.class)
     private Quantity quantity;
 
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     private String id;

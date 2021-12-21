@@ -136,7 +136,6 @@ interface CategoryRepository extends CrudRepository<Category, String> {
 
 @MappedEntity("mo2m_category")
 class Category {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -147,7 +146,6 @@ class Category {
 
 @MappedEntity("mo2m_product")
 class Product {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -160,7 +158,6 @@ class Product {
 
 @MappedEntity("mo2m_product_option")
 class ProductOption {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -173,7 +170,6 @@ class ProductOption {
 
 @MappedEntity("mo2m_option")
 class Option {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id

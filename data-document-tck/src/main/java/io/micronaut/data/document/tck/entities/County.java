@@ -6,7 +6,6 @@ import io.micronaut.data.annotation.MappedProperty;
 
 @MappedEntity("comp_country")
 public class County {
-    @MappedProperty("_id")
     @EmbeddedId
     private CountyPk id;
     @MappedProperty

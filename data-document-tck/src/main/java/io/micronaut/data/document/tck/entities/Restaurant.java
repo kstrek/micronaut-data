@@ -19,14 +19,12 @@ import io.micronaut.core.annotation.Nullable;
 import io.micronaut.data.annotation.GeneratedValue;
 import io.micronaut.data.annotation.Id;
 import io.micronaut.data.annotation.MappedEntity;
-import io.micronaut.data.annotation.MappedProperty;
 import io.micronaut.data.annotation.Relation;
 
 
 @MappedEntity
 public class Restaurant {
 
-    @MappedProperty("_id")
     @GeneratedValue
     @Id
     private String id;

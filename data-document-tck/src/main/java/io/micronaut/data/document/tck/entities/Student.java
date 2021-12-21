@@ -27,7 +27,6 @@ import java.util.Date;
 
 @MappedEntity
 public class Student {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     private String id;

@@ -192,7 +192,6 @@ interface CourseRatingCompositeKeyRepository extends CrudRepository<CourseRating
 @EqualsAndHashCode(includes = "id")
 @MappedEntity("m2m_student")
 class Student {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -208,7 +207,6 @@ class Student {
 @EqualsAndHashCode(includes = "id")
 @MappedEntity("m2m_course")
 class Course {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -221,7 +219,6 @@ class Course {
 
 @MappedEntity("m2m_course_rating")
 class CourseRating {
-    @MappedProperty("_id")
     @Id
     @GeneratedValue
     String id
@@ -234,7 +231,6 @@ class CourseRating {
 
 @MappedEntity("m2m_course_rating_ck")
 class CourseRatingCompositeKey {
-    @MappedProperty("_id")
     @EmbeddedId
     CourseRatingKey id
 

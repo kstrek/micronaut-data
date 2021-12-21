@@ -6,7 +6,6 @@ import io.micronaut.data.annotation.MappedProperty;
 
 @MappedEntity("comp_state")
 public class State {
-    @MappedProperty("_id")
     @Id
     private Long id;
     @MappedProperty
