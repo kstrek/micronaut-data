@@ -10,4 +10,6 @@ public interface MongoDatabaseFactory {
 
     MongoDatabase getDatabase(PersistentEntity persistentEntity) throws DataAccessException;
 
+    MongoDatabase getDatabase(Class<?> entityClass) throws DataAccessException;
+
 }

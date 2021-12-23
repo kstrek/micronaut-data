@@ -21,4 +21,9 @@ public final class SimpleMongoDatabaseFactory implements MongoDatabaseFactory {
     public MongoDatabase getDatabase(PersistentEntity persistentEntity) throws DataAccessException {
         return mongoClient.getDatabase(databaseName);
     }
+
+    @Override
+    public MongoDatabase getDatabase(Class<?> entityClass) throws DataAccessException {
+        return mongoClient.getDatabase(databaseName);
+    }
 }

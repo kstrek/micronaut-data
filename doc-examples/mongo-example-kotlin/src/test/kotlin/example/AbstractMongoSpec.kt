@@ -7,7 +7,7 @@ import org.junit.Rule
 import org.testcontainers.containers.MongoDBContainer
 import org.testcontainers.utility.DockerImageName
 
-open class AbstractMongoSpec : TestPropertyProvider {
+abstract class AbstractMongoSpec : TestPropertyProvider {
     @Rule
     var mongoDBContainer = MongoDBContainer(DockerImageName.parse("mongo").withTag("5"))
 

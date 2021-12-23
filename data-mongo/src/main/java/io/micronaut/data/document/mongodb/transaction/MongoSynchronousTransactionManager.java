@@ -4,6 +4,7 @@ import com.mongodb.TransactionOptions;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import io.micronaut.context.annotation.EachBean;
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.transaction.TransactionDefinition;
 import io.micronaut.transaction.exceptions.CannotCreateTransactionException;
@@ -18,6 +19,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 @EachBean(MongoClient.class)
+@Internal
 public class MongoSynchronousTransactionManager extends AbstractSynchronousTransactionManager<ClientSession> {
 
     private final MongoClient mongoClient;
@@ -29,6 +31,13 @@ public class MongoSynchronousTransactionManager extends AbstractSynchronousTrans
     @Nullable
     public ClientSession findConnection() {
         return (ClientSession) TransactionSynchronizationManager.getResource(mongoClient);
+    }
+
+    public void closeClientSession() {
+        ClientSession clientSession = (ClientSession) TransactionSynchronizationManager.unbindResource(mongoClient);
+        if (clientSession != null) {
+            clientSession.close();
+        }
     }
 
     @Override
