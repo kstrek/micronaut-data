@@ -9,7 +9,7 @@ import org.junit.jupiter.api.TestInstance
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @MicronautTest
-class StudentRepositorySpec() {
+class StudentRepositorySpec : AbstractMongoSpec() {
 
     @Inject
     lateinit var studentRepository: StudentRepository

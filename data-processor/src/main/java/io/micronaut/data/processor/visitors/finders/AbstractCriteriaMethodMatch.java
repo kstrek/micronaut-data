@@ -136,7 +136,7 @@ public abstract class AbstractCriteriaMethodMatch implements MethodMatcher.Metho
     @Override
     public final MethodMatchInfo buildMatchInfo(MethodMatchContext matchContext) {
         MethodMatchInfo methodMatchInfo;
-        if (supportedByImplicitQueries() && matchContext.supportsImplicitQueries() && hasNoWhereDeclaration(matchContext)) {
+        if (supportedByImplicitQueries() && matchContext.supportsImplicitQueries() && hasNoWhereAndJoinDeclaration(matchContext)) {
             Map.Entry<ClassElement, Class<? extends DataInterceptor>> entry = resolveReturnTypeAndInterceptor(matchContext);
             methodMatchInfo = new MethodMatchInfo(
                     entry.getKey(),
@@ -652,7 +652,10 @@ public abstract class AbstractCriteriaMethodMatch implements MethodMatcher.Metho
         return matchContext.getRepositoryClass().getAnnotationMetadata().getAnnotationValuesByType(Join.class);
     }
 
-    protected final boolean hasNoWhereDeclaration(@NonNull MethodMatchContext matchContext) {
+    protected final boolean hasNoWhereAndJoinDeclaration(@NonNull MethodMatchContext matchContext) {
+        if (matchContext.getMethodElement().hasAnnotation(Join.class)) {
+            return false;
+        }
         final boolean repositoryHasWhere = new AnnotationMetadataHierarchy(matchContext.getRepositoryClass(), matchContext.getMethodElement()).hasAnnotation(Where.class);
         final boolean entityHasWhere = matchContext.getRootEntity().hasAnnotation(Where.class);
         return !repositoryHasWhere && !entityHasWhere;

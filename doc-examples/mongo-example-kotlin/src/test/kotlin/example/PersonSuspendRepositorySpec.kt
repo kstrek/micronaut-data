@@ -9,13 +9,11 @@ import io.micronaut.data.repository.jpa.criteria.PredicateSpecification.not
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.*
 
 @MicronautTest
-internal class PersonSuspendRepositorySpec {
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+internal class PersonSuspendRepositorySpec : AbstractMongoSpec() {
     @Inject
     private lateinit var personRepository: PersonSuspendRepository
 
