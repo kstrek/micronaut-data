@@ -18,7 +18,7 @@ package io.micronaut.data.document.mongodb
 import groovy.transform.CompileStatic
 import io.micronaut.context.ApplicationContext
 import io.micronaut.core.annotation.NonNull
-import io.micronaut.data.document.model.query.builder.MongoDbQueryBuilder
+import io.micronaut.data.document.model.query.builder.MongoQueryBuilder
 import io.micronaut.data.document.mongodb.entities.Test
 import io.micronaut.data.document.tck.entities.Settlement
 import io.micronaut.data.document.tck.entities.SettlementPk
@@ -435,19 +435,19 @@ class MongoCriteriaSpec extends Specification {
     }
 
     private static String getQuery(PersistentEntityCriteriaQuery<Object> query) {
-        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getQuery()
+        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoQueryBuilder()).getQuery()
     }
 
     private static String getQuery(PersistentEntityCriteriaDelete<Object> query) {
-        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getQuery()
+        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoQueryBuilder()).getQuery()
     }
 
     private static String getQuery(PersistentEntityCriteriaUpdate<Object> query) {
-        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getQuery()
+        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoQueryBuilder()).getQuery()
     }
 
     private static String getUpdateQuery(PersistentEntityCriteriaUpdate<Object> query) {
-        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoDbQueryBuilder()).getUpdate()
+        return ((QueryResultPersistentEntityCriteriaQuery) query).buildQuery(new MongoQueryBuilder()).getUpdate()
     }
 
     @CompileStatic

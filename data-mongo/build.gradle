@@ -15,8 +15,8 @@ dependencies {
 
     api projects.dataRuntime
     api projects.dataDocumentModel
+    api libs.micronaut.serde.bson
 
-    implementation libs.micronaut.serde.bson
     implementation libs.mongodb.driver.sync
     implementation libs.mongodb.driver.reactivestreams
     implementation mn.micronaut.mongo

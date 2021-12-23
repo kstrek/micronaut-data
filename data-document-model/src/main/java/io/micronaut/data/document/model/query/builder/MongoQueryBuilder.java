@@ -52,7 +52,7 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static java.util.Collections.singletonMap;
 
-public class MongoDbQueryBuilder implements QueryBuilder {
+public class MongoQueryBuilder implements QueryBuilder {
 
     protected final Map<Class, CriterionHandler> queryHandlers = new HashMap<>(30);
 
@@ -77,7 +77,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
                         throw new IllegalStateException("Expected size of 1");
                     }
                     String key = neg.keySet().iterator().next();
-                    obj.put(key, singletonMap("$neg", neg.get(key)));
+                    obj.put(key, singletonMap("$not", neg.get(key)));
                 } else {
                     throw new IllegalStateException("Negation is not supported for this criterion: " + criterion);
                 }
@@ -184,7 +184,7 @@ public class MongoDbQueryBuilder implements QueryBuilder {
     }
 
     private String getPropertyPersistName(PersistentProperty property) {
-        if (property.getOwner().getIdentity() == property) {
+        if (property.getOwner() != null && property.getOwner().getIdentity() == property) {
             return "_id";
         }
         return property.getAnnotationMetadata()
@@ -441,11 +441,15 @@ public class MongoDbQueryBuilder implements QueryBuilder {
 
                         List<String> localMatchFields = new ArrayList<>();
                         List<String> foreignMatchFields = new ArrayList<>();
-                        traversePersistentProperties(mappedAssociations, lookupStage.persistentEntity.getIdentity(), (associations, p) -> {
+                        PersistentProperty identity = lookupStage.persistentEntity.getIdentity();
+                        if (identity == null) {
+                            throw new IllegalStateException("Null identity of persistent entity: " + lookupStage.persistentEntity);
+                        }
+                        traversePersistentProperties(mappedAssociations, identity, (associations, p) -> {
                             String fieldPath = asPath(associations, p);
                             localMatchFields.add(fieldPath);
                         });
-                        traversePersistentProperties(lookupStage.persistentEntity.getIdentity(), (associations, p) -> {
+                        traversePersistentProperties(identity, (associations, p) -> {
                             String fieldPath = asPath(associations, p);
                             foreignMatchFields.add(fieldPath);
                         });

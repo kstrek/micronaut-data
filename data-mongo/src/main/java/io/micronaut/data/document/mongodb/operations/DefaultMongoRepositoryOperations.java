@@ -17,6 +17,7 @@ import com.mongodb.client.result.UpdateResult;
 import io.micronaut.context.annotation.EachBean;
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.Internal;
+import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.core.beans.BeanWrapper;
@@ -50,15 +51,21 @@ import io.micronaut.data.model.runtime.RuntimePersistentProperty;
 import io.micronaut.data.model.runtime.UpdateBatchOperation;
 import io.micronaut.data.model.runtime.UpdateOperation;
 import io.micronaut.data.model.runtime.convert.AttributeConverter;
+import io.micronaut.data.operations.async.AsyncCapableRepository;
+import io.micronaut.data.operations.reactive.ReactiveCapableRepository;
+import io.micronaut.data.operations.reactive.ReactiveRepositoryOperations;
 import io.micronaut.data.runtime.config.DataSettings;
 import io.micronaut.data.runtime.convert.DataConversionService;
 import io.micronaut.data.runtime.date.DateTimeProvider;
+import io.micronaut.data.runtime.operations.ExecutorAsyncOperations;
+import io.micronaut.data.runtime.operations.ExecutorReactiveOperations;
 import io.micronaut.data.runtime.operations.internal.AbstractRepositoryOperations;
 import io.micronaut.data.runtime.operations.internal.AbstractSyncEntitiesOperations;
 import io.micronaut.data.runtime.operations.internal.AbstractSyncEntityOperations;
 import io.micronaut.data.runtime.operations.internal.OperationContext;
 import io.micronaut.data.runtime.operations.internal.SyncCascadeOperations;
 import io.micronaut.http.codec.MediaTypeCodec;
+import jakarta.inject.Named;
 import org.bson.BsonArray;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentWrapper;
@@ -80,6 +87,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Spliterator;
 import java.util.Spliterators;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -89,13 +98,19 @@ import java.util.stream.StreamSupport;
 
 @EachBean(MongoClient.class)
 @Internal
-public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperations<ClientSession, Object> implements MongoRepositoryOperations, SyncCascadeOperations.SyncCascadeOperationsHelper<DefaultMongoRepositoryOperations.MongoOperationContext> {
+final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperations<ClientSession, Object> implements
+        MongoRepositoryOperations,
+        AsyncCapableRepository,
+        ReactiveCapableRepository,
+        SyncCascadeOperations.SyncCascadeOperationsHelper<DefaultMongoRepositoryOperations.MongoOperationContext> {
     private static final Logger QUERY_LOG = DataSettings.QUERY_LOG;
     private static final BsonDocument EMPTY = new BsonDocument();
     private final MongoClient mongoClient;
     private final SyncCascadeOperations<MongoOperationContext> cascadeOperations;
     private final MongoSynchronousTransactionManager transactionManager;
     private final MongoDatabaseFactory mongoDatabaseFactory;
+    private ExecutorAsyncOperations asyncOperations;
+    private ExecutorService executorService;
 
     /**
      * Default constructor.
@@ -108,6 +123,7 @@ public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperatio
      * @param mongoClient                The Mongo client
      * @param transactionManager         The Mongo transaction manager
      * @param mongoDatabaseFactory       The Mongo database factory
+     * @param executorService            The executor service
      */
     protected DefaultMongoRepositoryOperations(List<MediaTypeCodec> codecs,
                                                DateTimeProvider<Object> dateTimeProvider,
@@ -116,12 +132,14 @@ public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperatio
                                                AttributeConverterRegistry attributeConverterRegistry,
                                                MongoClient mongoClient,
                                                MongoSynchronousTransactionManager transactionManager,
-                                               MongoDatabaseFactory mongoDatabaseFactory) {
+                                               MongoDatabaseFactory mongoDatabaseFactory,
+                                               @Named("io") @Nullable ExecutorService executorService) {
         super(codecs, dateTimeProvider, runtimeEntityRegistry, conversionService, attributeConverterRegistry);
         this.mongoClient = mongoClient;
         this.cascadeOperations = new SyncCascadeOperations<>(conversionService, this);
         this.transactionManager = transactionManager;
         this.mongoDatabaseFactory = mongoDatabaseFactory;
+        this.executorService = executorService;
     }
 
     @Override
@@ -175,7 +193,7 @@ public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperatio
                 boolean isProjection = pipeline.stream().anyMatch(stage -> stage.containsKey("$groupId") || stage.containsKey("$project"));
                 if (isProjection) {
                     BsonDocument result = getCollection(database, persistentEntity, BsonDocument.class).aggregate(clientSession, pipeline, BsonDocument.class).first();
-                    return convertResult(resultType, result);
+                    return convertResult(database, resultType, result, preparedQuery.isDtoProjection());
                 }
                 return getCollection(database, persistentEntity, resultType).aggregate(clientSession, pipeline).map(r -> {
                     if (type.isInstance(r)) {
@@ -187,7 +205,10 @@ public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperatio
         });
     }
 
-    private <R> R convertResult(Class<R> resultType, BsonDocument result) {
+    private <R> R convertResult(MongoDatabase mongoDatabase,
+                                Class<R> resultType,
+                                BsonDocument result,
+                                boolean isDtoProjection) {
         BsonValue value;
         if (result == null) {
             value = BsonNull.VALUE;
@@ -195,8 +216,14 @@ public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperatio
             value = result.values().iterator().next().asNumber();
         } else if (result.size() == 2) {
             value = result.entrySet().stream().filter(f -> !f.getKey().equals("_id")).findFirst().get().getValue();
+        } else if (isDtoProjection) {
+            Object dtoResult = Utils.toValue(result.asDocument(), resultType, mongoDatabase.getCodecRegistry());
+            if (resultType.isInstance(dtoResult)) {
+                return (R) dtoResult;
+            }
+            return conversionService.convertRequired(dtoResult, resultType);
         } else {
-            throw new IllegalStateException();
+            throw new IllegalStateException("Unrecognized result: " + result);
         }
         return conversionService.convertRequired(Utils.toValue(value), resultType);
     }
@@ -354,13 +381,17 @@ public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperatio
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing Mongo 'countDocuments' with filter: {}", filter.toBsonDocument().toJson());
             }
-            long count = getCollection(mongoDatabase, persistentEntity, BsonDocument.class).countDocuments(clientSession, filter);
+            long count = getCollection(mongoDatabase, persistentEntity, BsonDocument.class)
+                    .countDocuments(clientSession, filter);
             return conversionService.convertRequired(count, resultType);
         } else {
             if (QUERY_LOG.isDebugEnabled()) {
                 QUERY_LOG.debug("Executing Mongo 'aggregate' with pipeline: {}", pipeline.stream().map(e -> e.toBsonDocument().toJson()).collect(Collectors.toList()));
             }
-            R result = getCollection(mongoDatabase, persistentEntity, type).aggregate(clientSession, pipeline, BsonDocument.class).map(bsonDocument -> convertResult(resultType, bsonDocument)).first();
+            R result = getCollection(mongoDatabase, persistentEntity, type)
+                    .aggregate(clientSession, pipeline, BsonDocument.class)
+                    .map(bsonDocument -> convertResult(mongoDatabase, resultType, bsonDocument, false))
+                    .first();
             if (result == null) {
                 result = conversionService.convertRequired(0, resultType);
             }
@@ -1001,6 +1032,38 @@ public class DefaultMongoRepositoryOperations extends AbstractRepositoryOperatio
                 }
             }
         };
+    }
+
+
+    @NonNull
+    @Override
+    public ExecutorAsyncOperations async() {
+        ExecutorAsyncOperations asyncOperations = this.asyncOperations;
+        if (asyncOperations == null) {
+            synchronized (this) { // double check
+                asyncOperations = this.asyncOperations;
+                if (asyncOperations == null) {
+                    asyncOperations = new ExecutorAsyncOperations(
+                            this,
+                            executorService != null ? executorService : newLocalThreadPool()
+                    );
+                    this.asyncOperations = asyncOperations;
+                }
+            }
+        }
+        return asyncOperations;
+    }
+
+    @NonNull
+    private ExecutorService newLocalThreadPool() {
+        this.executorService = Executors.newCachedThreadPool();
+        return executorService;
+    }
+
+    @NonNull
+    @Override
+    public ReactiveRepositoryOperations reactive() {
+        return new ExecutorReactiveOperations(async(), conversionService);
     }
 
     private abstract class MongoEntityOperation<T> extends AbstractSyncEntityOperations<MongoOperationContext, T, RuntimeException> {

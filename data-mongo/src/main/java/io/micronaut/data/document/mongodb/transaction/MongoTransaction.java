@@ -4,16 +4,23 @@ import com.mongodb.TransactionOptions;
 import com.mongodb.client.ClientSession;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Nullable;
+import org.bson.types.ObjectId;
 
 @Internal
 final class MongoTransaction implements AutoCloseable {
 
+    private final ObjectId id = new ObjectId();
+    private String name;
     private ClientSession clientSession;
     private boolean newClientSession;
     private boolean rollbackOnly = false;
 
     public MongoTransaction(ClientSession clientSession) {
         this.clientSession = clientSession;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public boolean hasClientSession() {
@@ -64,5 +71,13 @@ final class MongoTransaction implements AutoCloseable {
             clientSession.close();
             clientSession = null;
         }
+    }
+
+    @Override
+    public String toString() {
+        if (name != null) {
+            return name + " " + id.toHexString();
+        }
+        return id.toHexString();
     }
 }

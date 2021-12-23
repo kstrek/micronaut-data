@@ -9,7 +9,7 @@ import io.micronaut.data.annotation.Id
 import io.micronaut.data.annotation.Join
 import io.micronaut.data.annotation.MappedEntity
 import io.micronaut.data.annotation.Relation
-import io.micronaut.data.document.model.query.builder.MongoDbQueryBuilder
+import io.micronaut.data.document.model.query.builder.MongoQueryBuilder
 import io.micronaut.data.document.mongodb.annotation.MongoRepository
 import io.micronaut.data.model.query.QueryModel
 import io.micronaut.data.model.query.QueryParameter
@@ -94,7 +94,7 @@ class MongoManyToManySpec extends Specification implements MongoTestPropertyProv
 
     void "test build Student select with courses"() {
         when:
-            QueryBuilder encoder = new MongoDbQueryBuilder()
+            QueryBuilder encoder = new MongoQueryBuilder()
             def queryModel = QueryModel.from(getRuntimePersistentEntity(Student))
             queryModel.join("courses", Join.Type.FETCH, null)
             def q = encoder.buildQuery(queryModel.idEq(new QueryParameter("id")))
@@ -104,7 +104,7 @@ class MongoManyToManySpec extends Specification implements MongoTestPropertyProv
 
     void "test build Student select with ratings"() {
         when:
-            QueryBuilder encoder = new MongoDbQueryBuilder()
+            QueryBuilder encoder = new MongoQueryBuilder()
             def queryModel = QueryModel.from(getRuntimePersistentEntity(Student))
             queryModel.join("ratings", Join.Type.FETCH, null)
             def q = encoder.buildQuery(queryModel.idEq(new QueryParameter("id")))

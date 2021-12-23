@@ -1,16 +1,19 @@
 
 package example;
 
-import javax.persistence.*;
+import io.micronaut.data.annotation.GeneratedValue;
+import io.micronaut.data.annotation.Id;
+import io.micronaut.data.annotation.MappedEntity;
+import io.micronaut.data.annotation.Relation;
 
-@Entity
+@MappedEntity
 public class Product {
 
     @Id
     @GeneratedValue
     private Long id;
     private String name;
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @Relation(Relation.Kind.MANY_TO_ONE)
     private Manufacturer manufacturer;
 
     public Product(String name, Manufacturer manufacturer) {

@@ -17,7 +17,7 @@ package io.micronaut.data.document.mongodb.annotation;
 
 import io.micronaut.data.annotation.Repository;
 import io.micronaut.data.annotation.RepositoryConfiguration;
-import io.micronaut.data.document.model.query.builder.MongoDbQueryBuilder;
+import io.micronaut.data.document.model.query.builder.MongoQueryBuilder;
 import io.micronaut.data.document.mongodb.operations.MongoRepositoryOperations;
 
 import java.lang.annotation.Documented;
@@ -33,7 +33,7 @@ import java.lang.annotation.Target;
  * @since 3.3.0
  */
 @RepositoryConfiguration(
-        queryBuilder = MongoDbQueryBuilder.class,
+        queryBuilder = MongoQueryBuilder.class,
         operations = MongoRepositoryOperations.class,
         implicitQueries = true,
         namedParameters = false

@@ -61,9 +61,10 @@ public class MongoSynchronousTransactionManager extends AbstractSynchronousTrans
     protected void doBegin(Object transaction, TransactionDefinition definition) throws TransactionException {
         MongoTransaction mongoTransaction = (MongoTransaction) transaction;
         try {
+            mongoTransaction.setName(definition.getName());
             if (!mongoTransaction.hasClientSession()) {
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Acquired ClientSession for Mongo transaction");
+                    logger.debug("Acquired ClientSession for Mongo transaction [{}]", mongoTransaction);
                 }
                 ClientSession clientSession = mongoClient.startSession();
                 mongoTransaction.setClientSessionHolder(clientSession, true);

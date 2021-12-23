@@ -8,15 +8,19 @@ import io.micronaut.data.annotation.MappedProperty;
 import io.micronaut.data.document.serde.CustomConverterDeserializer;
 import io.micronaut.data.document.serde.IdDeserializer;
 import io.micronaut.data.document.serde.IdPropertyNamingStrategy;
+import io.micronaut.data.document.serde.OneRelationDeserializer;
 import io.micronaut.data.model.runtime.AttributeConverterRegistry;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.convert.AttributeConverter;
 import io.micronaut.serde.Decoder;
 import io.micronaut.serde.Deserializer;
+import io.micronaut.serde.bson.BsonReaderDecoder;
 import io.micronaut.serde.bson.custom.CodecBsonDecoder;
 import io.micronaut.serde.config.naming.PropertyNamingStrategy;
 import io.micronaut.serde.exceptions.SerdeException;
 import io.micronaut.serde.reference.PropertyReference;
+import org.bson.BsonDocument;
+import org.bson.codecs.BsonDocumentCodec;
 import org.bson.codecs.Codec;
 import org.bson.codecs.IterableCodec;
 import org.bson.codecs.configuration.CodecRegistry;
@@ -51,6 +55,35 @@ public class DataDecoderContext implements Deserializer.DecoderContext {
 
     @Override
     public <T, D extends Deserializer<? extends T>> D findCustomDeserializer(Class<? extends D> deserializerClass) throws SerdeException {
+        if (deserializerClass == OneRelationDeserializer.class) {
+            OneRelationDeserializer oneRelationDeserializer = new OneRelationDeserializer() {
+
+                @Override
+                public Deserializer<Object> createSpecific(Argument<? super Object> type, DecoderContext decoderContext) throws SerdeException {
+                    Deserializer<?> relationDeser = findDeserializer(type);
+                    return new Deserializer<Object>() {
+                        @Override
+                        public Object deserialize(Decoder decoder, DecoderContext decoderContext, Argument<? super Object> type) throws IOException {
+                            if (decoder.decodeNull()) {
+                                return null;
+                            }
+                            CodecBsonDecoder<BsonDocument> codecBsonDecoder = new CodecBsonDecoder<>(new BsonDocumentCodec(codecRegistry));
+                            BsonDocument document = codecBsonDecoder.deserialize(decoder, decoderContext, type);
+                            if (document == null || document.size() <= 1) {
+                                return null;
+                            }
+                            return relationDeser.deserialize(new BsonReaderDecoder(document.asBsonReader()), decoderContext, type);
+                        }
+                    };
+                }
+
+                @Override
+                public Object deserialize(Decoder decoder, DecoderContext decoderContext, Argument<? super Object> type) throws IOException {
+                    throw new IllegalStateException("Create specific call is required!");
+                }
+            };
+            return (D) oneRelationDeserializer;
+        }
         if (deserializerClass == IdDeserializer.class) {
             IdDeserializer idDeserializer = new IdDeserializer() {
 
@@ -90,7 +123,8 @@ public class DataDecoderContext implements Deserializer.DecoderContext {
                                 return null;
                             }
                             Object deserialized = deserializer.deserialize(decoder, decoderContext, convertedType);
-                            return converter.convertToEntityValue(deserialized, ConversionContext.of(convertedType));
+                            Object o = converter.convertToEntityValue(deserialized, ConversionContext.of(convertedType));
+                            return o;
                         }
                     };
                 }
@@ -109,9 +143,7 @@ public class DataDecoderContext implements Deserializer.DecoderContext {
     public <T> Deserializer<? extends T> findDeserializer(Argument<? extends T> type) throws SerdeException {
         Codec<? extends T> codec = codecRegistry.get(type.getType(), codecRegistry);
         if (codec != null && !(codec instanceof IterableCodec)) {
-            return new CodecBsonDecoder<T>((Codec<T>) codec) {
-
-            };
+            return new CodecBsonDecoder<T>((Codec<T>) codec);
         }
         return parent.findDeserializer(type);
     }

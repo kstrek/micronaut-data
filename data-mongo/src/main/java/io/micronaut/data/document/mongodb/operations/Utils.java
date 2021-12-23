@@ -19,6 +19,7 @@ import org.bson.BsonObjectId;
 import org.bson.BsonString;
 import org.bson.BsonType;
 import org.bson.BsonValue;
+import org.bson.codecs.DecoderContext;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.annotations.BsonRepresentation;
 import org.bson.conversions.Bson;
@@ -75,9 +76,9 @@ public final class Utils {
     }
 
     static Bson filterByEntityId(ConversionService<?> conversionService,
-                           RuntimePersistentEntity<?> persistentEntity,
-                           Object entity,
-                           CodecRegistry codecRegistry) {
+                                 RuntimePersistentEntity<?> persistentEntity,
+                                 Object entity,
+                                 CodecRegistry codecRegistry) {
         BsonValue id = entityIdValue(conversionService, persistentEntity, entity, codecRegistry);
         return new BsonDocument().append("_id", id);
     }
@@ -100,6 +101,10 @@ public final class Utils {
         return property.getAnnotationMetadata()
                 .stringValue(SerdeConfig.class, SerdeConfig.PROPERTY)
                 .orElseGet(property::getName);
+    }
+
+    static <T> T toValue(BsonDocument bsonDocument, Class<T> resultClass, CodecRegistry codecRegistry) {
+        return codecRegistry.get(resultClass).decode(bsonDocument.asBsonReader(), DecoderContext.builder().build());
     }
 
     static Object toValue(BsonValue bsonValue) {
@@ -131,8 +136,7 @@ public final class Utils {
         if (value instanceof ObjectId) {
             return new BsonObjectId((ObjectId) value);
         }
-        BsonDocument bsonDocument = BsonDocumentWrapper.asBsonDocument(value, codecRegistry).toBsonDocument();
-        return bsonDocument;
+        return BsonDocumentWrapper.asBsonDocument(value, codecRegistry).toBsonDocument();
     }
 
     static BsonValue toBsonValue(ConversionService<?> conversionService, BsonType bsonType, Object value) {

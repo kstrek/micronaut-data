@@ -65,31 +65,6 @@ public class DataSerdeRegistry extends DefaultSerdeRegistry {
     }
 
     @Override
-    public <T, D extends Deserializer<? extends T>> D findCustomDeserializer(Class<? extends D> deserializerClass) throws SerdeException {
-//        if (deserializerClass == OneRelationDeserializer.class) {
-//            OneRelationDeserializer oneRelationDeserializer = new OneRelationDeserializer() {
-//
-//                @Override
-//                public Object deserialize(Decoder decoder, DecoderContext decoderContext, Argument<? super Object> type) throws IOException {
-//                    if (decoder.decodeNull()) {
-//                        return null;
-//                    }
-//                    RuntimePersistentEntity entity = runtimeEntityRegistry.getEntity(type.getType());
-//                    if (entity.getIdentity() == null) {
-//                        throw new SerdeException("Cannot find ID of entity type: " + type);
-//                    }
-//                    Deserializer<Object> idDeserializer = findDeserializer(entity.getIdentity().getArgument());
-//                    Object id = idDeserializer.deserialize(decoder, decoderContext, type);
-//
-//                    return entity.getIntrospection().instantiate();
-//                }
-//            };
-//            return (D) oneRelationDeserializer;
-//        }
-        return super.findCustomDeserializer(deserializerClass);
-    }
-
-    @Override
     public <T, D extends Serializer<? extends T>> D findCustomSerializer(Class<? extends D> serializerClass) throws SerdeException {
         if (serializerClass == OneRelationSerializer.class) {
             OneRelationSerializer oneRelationSerializer = new OneRelationSerializer() {

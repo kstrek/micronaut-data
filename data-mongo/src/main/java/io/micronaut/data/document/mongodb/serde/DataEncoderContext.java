@@ -127,9 +127,7 @@ public class DataEncoderContext implements Serializer.EncoderContext {
     public <T> Serializer<? super T> findSerializer(Argument<? extends T> type) throws SerdeException {
         Codec<? extends T> codec = codecRegistry.get(type.getType(), codecRegistry);
         if (codec != null && !(codec instanceof IterableCodec)) {
-            return new CodecBsonDecoder<T>((Codec<T>) codec) {
-
-            };
+            return new CodecBsonDecoder<T>((Codec<T>) codec);
         }
         return parent.findSerializer(type);
     }
