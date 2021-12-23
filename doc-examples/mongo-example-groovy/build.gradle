@@ -1,5 +1,5 @@
 plugins {
-    id "java"
+    id "groovy"
     id "io.micronaut.application"
 }
 
@@ -19,15 +19,14 @@ application {
 micronaut {
     version micronautVersion
     runtime "netty"
-    testRuntime "junit5"
+    testRuntime "spock"
 }
 
 dependencies {
-    annotationProcessor projects.dataDocumentProcessor
+    compileOnly projects.dataProcessor // Override app plugin version
+    compileOnly projects.dataDocumentProcessor
 
-    implementation 'io.micronaut.rxjava2:micronaut-rxjava2'
     implementation 'io.micronaut.reactor:micronaut-reactor'
-
     implementation "io.micronaut:micronaut-http-client"
     implementation projects.dataMongo
     implementation libs.mongodb.driver.sync

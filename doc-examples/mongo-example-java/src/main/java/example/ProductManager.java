@@ -2,7 +2,6 @@
 package example;
 
 import com.mongodb.client.ClientSession;
-import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import io.micronaut.data.document.mongodb.database.MongoDatabaseFactory;
 import io.micronaut.transaction.SynchronousTransactionManager;
@@ -25,17 +24,19 @@ public class ProductManager {
 
     Product save(String name, Manufacturer manufacturer) {
         return transactionManager.executeWrite(status -> { // <2>
-            MongoDatabase database = mongoDatabaseFactory.getDatabase(Product.class);
             final Product product = new Product(name, manufacturer);
-            database.getCollection("product", Product.class).insertOne(clientSession, product);
+            mongoDatabaseFactory.getDatabase(Product.class)
+                    .getCollection("product", Product.class)
+                    .insertOne(clientSession, product);
             return product;
         });
     }
 
     Product find(String name) {
         return transactionManager.executeRead(status -> { // <3>
-            MongoDatabase database = mongoDatabaseFactory.getDatabase(Product.class);
-            return database.getCollection("product", Product.class).find(clientSession, Filters.eq("name", name)).first();
+            return mongoDatabaseFactory.getDatabase(Product.class)
+                    .getCollection("product", Product.class)
+                    .find(clientSession, Filters.eq("name", name)).first();
         });
     }
 }
