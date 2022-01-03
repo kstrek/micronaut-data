@@ -11,6 +11,7 @@ import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.data.annotation.Relation;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.Embedded;
+import io.micronaut.data.model.PersistentAssociationPath;
 import io.micronaut.data.model.runtime.RuntimeAssociation;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 
@@ -72,18 +73,19 @@ public abstract class AbstractCascadeOperations {
                         continue;
                     case ONE_TO_MANY:
                     case MANY_TO_MANY:
-                        final RuntimeAssociation inverse = association.getInverseSide().orElse(null);
+                        final PersistentAssociationPath inverse = association.getInversePathSide().orElse(null);
                         Iterable<Object> children = (Iterable<Object>) association.getProperty().get(entity);
                         if (!children.iterator().hasNext()) {
                             continue;
                         }
-                        if (inverse != null && inverse.getKind() == Relation.Kind.MANY_TO_ONE) {
+                        if (inverse != null && inverse.getAssociation().getKind() == Relation.Kind.MANY_TO_ONE) {
                             List<Object> entities = new ArrayList<>(CollectionUtils.iterableToList(children));
                             for (ListIterator<Object> iterator = entities.listIterator(); iterator.hasNext(); ) {
                                 Object c = iterator.next();
-                                final BeanProperty property = inverse.getProperty();
-                                c = setProperty(property, c, entity);
-                                iterator.set(c);
+                                Object newC = inverse.setPropertyValue(c, entity);
+                                if (c != newC) {
+                                    iterator.set(c);
+                                }
                             }
                             children = entities;
                         }
@@ -110,11 +112,10 @@ public abstract class AbstractCascadeOperations {
         RuntimeAssociation<Object> association = (RuntimeAssociation<Object>) associations.iterator().next();
         if (associations.size() == 1) {
             if (association.isForeignKey()) {
-                RuntimeAssociation<Object> inverseAssociation = (RuntimeAssociation) association.getInverseSide().orElse(null);
-                if (inverseAssociation != null) {
+                PersistentAssociationPath inverse = association.getInversePathSide().orElse(null);
+                if (inverse != null) {
                     //don't cast to BeanProperty<T..> here because its the inverse, so we want to set the entity onto the newChild
-                    BeanProperty property = inverseAssociation.getProperty();
-                    newChild = setProperty(property, newChild, entity);
+                    newChild = inverse.setPropertyValue(newChild, entity);
                 }
             }
             if (prevChild != newChild) {
@@ -148,10 +149,9 @@ public abstract class AbstractCascadeOperations {
             for (ListIterator<Object> iterator = newChildren.listIterator(); iterator.hasNext(); ) {
                 Object c = iterator.next();
                 if (association.isForeignKey()) {
-                    RuntimeAssociation inverseAssociation = association.getInverseSide().orElse(null);
-                    if (inverseAssociation != null) {
-                        BeanProperty property = inverseAssociation.getProperty();
-                        Object newc = setProperty(property, c, entity);
+                    PersistentAssociationPath inverse = association.getInversePathSide().orElse(null);
+                    if (inverse != null) {
+                        Object newc = inverse.setPropertyValue(c, entity);
                         if (c != newc) {
                             iterator.set(newc);
                         }

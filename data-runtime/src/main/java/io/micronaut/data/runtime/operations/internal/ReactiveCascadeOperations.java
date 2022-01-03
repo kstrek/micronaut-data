@@ -3,6 +3,7 @@ package io.micronaut.data.runtime.operations.internal;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.convert.ConversionService;
 import io.micronaut.data.annotation.Relation;
+import io.micronaut.data.model.Association;
 import io.micronaut.data.model.query.builder.sql.SqlQueryBuilder;
 import io.micronaut.data.model.runtime.RuntimeAssociation;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
@@ -47,10 +48,10 @@ public class ReactiveCascadeOperations<Ctx extends OperationContext> extends Abs
                 if (ctx.persisted.contains(child)) {
                     continue;
                 }
-                boolean hasId = childPersistentEntity.getIdentity().getProperty().get(child) != null;
-
+                RuntimePersistentProperty<Object> identity = childPersistentEntity.getIdentity();
+                boolean hasId = identity.getProperty().get(child) != null;
                 Mono<Object> childMono;
-                if (!hasId && (cascadeType == Relation.Cascade.PERSIST)) {
+                if ((!hasId || identity instanceof Association) && (cascadeType == Relation.Cascade.PERSIST)) {
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("Cascading PERSIST for '{}' association: '{}'", persistentEntity.getName(), cascadeOp.ctx.associations);
                     }
@@ -110,12 +111,12 @@ public class ReactiveCascadeOperations<Ctx extends OperationContext> extends Abs
                     }
                     children = childrenFlux.collectList();
                 } else if (cascadeType == Relation.Cascade.PERSIST) {
-                    if (helper.supportsBatch(ctx, persistentEntity)) {
+                    if (helper.isSupportsBatchInsert(ctx, persistentEntity)) {
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("Cascading PERSIST for '{}' association: '{}'", persistentEntity.getName(), cascadeOp.ctx.associations);
                         }
                         RuntimePersistentProperty<Object> identity = childPersistentEntity.getIdentity();
-                        Predicate<Object> veto = val -> ctx.persisted.contains(val) || identity.getProperty().get(val) != null;
+                        Predicate<Object> veto = val -> ctx.persisted.contains(val) || identity.getProperty().get(val) != null && !(identity instanceof Association);
                         Flux<Object> inserted = helper.persistBatch(ctx, cascadeManyOp.children, childPersistentEntity, veto);
                         children = inserted.collectList();
                     } else {
@@ -141,7 +142,7 @@ public class ReactiveCascadeOperations<Ctx extends OperationContext> extends Abs
                     T entityAfterCascade = afterCascadedMany(e, cascadeOp.ctx.associations, cascadeManyOp.children, newChildren);
                     RuntimeAssociation<Object> association = (RuntimeAssociation) cascadeOp.ctx.getAssociation();
                     if (SqlQueryBuilder.isForeignKeyWithJoinTable(association)) {
-                        if (helper.supportsBatch(ctx, cascadeOp.ctx.parentPersistentEntity)) {
+                        if (helper.isSupportsBatchInsert(ctx, cascadeOp.ctx.parentPersistentEntity)) {
                             Predicate<Object> veto = ctx.persisted::contains;
                             Mono<Void> op = helper.persistManyAssociationBatch(ctx, association, cascadeOp.ctx.parent, cascadeOp.ctx.parentPersistentEntity, newChildren, childPersistentEntity, veto);
                             return op.thenReturn(entityAfterCascade);
@@ -168,7 +169,17 @@ public class ReactiveCascadeOperations<Ctx extends OperationContext> extends Abs
 
     public interface ReactiveCascadeOperationsHelper<Ctx extends OperationContext> {
 
-        boolean supportsBatch(Ctx ctx, RuntimePersistentEntity<?> persistentEntity);
+        default boolean isSupportsBatchInsert(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
+            return true;
+        }
+
+        default boolean isSupportsBatchUpdate(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
+            return true;
+        }
+
+        default boolean isSupportsBatchDelete(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
+            return true;
+        }
 
         <T> Mono<T> persistOne(Ctx ctx, T value, RuntimePersistentEntity<T> persistentEntity);
 

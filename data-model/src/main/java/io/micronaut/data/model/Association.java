@@ -62,6 +62,23 @@ public interface Association extends PersistentProperty {
     }
 
     /**
+     * Retrieves the inverse side path of the association. If there is one.
+     *
+     * @return The association.
+     */
+    default Optional<PersistentAssociationPath> getInversePathSide() {
+        return getAnnotationMetadata()
+                .stringValue(Relation.class, "mappedBy")
+                .flatMap(s -> {
+                    final PersistentPropertyPath persistentPropertyPath = getAssociatedEntity().getPropertyPath(s);
+                    if (persistentPropertyPath instanceof PersistentAssociationPath) {
+                        return Optional.of((PersistentAssociationPath) persistentPropertyPath);
+                    }
+                    return Optional.empty();
+                });
+    }
+
+    /**
      * Whether the relationship is bidirectional.
      * @return True if it is bidirectional.
      */

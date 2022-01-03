@@ -16,6 +16,7 @@
 package io.micronaut.data.runtime.intercept.criteria;
 
 import io.micronaut.aop.MethodInvocationContext;
+import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.beans.BeanIntrospection;
 import io.micronaut.core.reflect.ClassUtils;
@@ -96,7 +97,12 @@ public abstract class AbstractSpecificationInterceptor<T, R> extends AbstractQue
                 {
                     Class<QueryBuilder> builder = context.getAnnotationMetadata().classValue(RepositoryConfiguration.class, "queryBuilder")
                             .orElseThrow(() -> new IllegalStateException("Cannot determine QueryBuilder"));
-                    return BeanIntrospection.getIntrospection(builder).instantiate();
+                    BeanIntrospection<QueryBuilder> introspection = BeanIntrospection.getIntrospection(builder);
+                    if (introspection.getConstructorArguments().length == 1
+                            && introspection.getConstructorArguments()[0].getType() == AnnotationMetadata.class) {
+                        return introspection.instantiate(context.getAnnotationMetadata());
+                    }
+                    return introspection.instantiate();
                 }
         );
 

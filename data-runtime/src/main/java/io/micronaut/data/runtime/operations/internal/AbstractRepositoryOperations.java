@@ -35,7 +35,6 @@ import io.micronaut.data.model.PersistentEntity;
 import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.PersistentPropertyPath;
 import io.micronaut.data.model.query.JoinPath;
-import io.micronaut.data.model.query.builder.sql.Dialect;
 import io.micronaut.data.model.runtime.AttributeConverterRegistry;
 import io.micronaut.data.model.runtime.RuntimeEntityRegistry;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
@@ -48,8 +47,6 @@ import io.micronaut.http.MediaType;
 import io.micronaut.http.codec.MediaTypeCodec;
 
 import java.util.AbstractMap;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,7 +57,6 @@ import java.util.stream.Stream;
  * Abstract SQL repository implementation not specifically bound to JDBC.
  *
  * @param <Cnt> The connection type
- * @param <Exc> The exception type
  * @author Denis Stepanov
  * @since 3.1.0
  */
@@ -187,51 +183,6 @@ public abstract class AbstractRepositoryOperations<Cnt, PS>
             return idPropertiesWithValues(identity, propertyValue);
         }
         return Stream.of(new AbstractMap.SimpleEntry<>(property, propertyValue));
-    }
-
-    /**
-     * Does supports batch for update queries.
-     *
-     * @param persistentEntity The persistent entity
-     * @param dialect          The dialect
-     * @return true if supported
-     */
-    protected boolean isSupportsBatchInsert(PersistentEntity persistentEntity, Dialect dialect) {
-        switch (dialect) {
-            case SQL_SERVER:
-                return false;
-            case MYSQL:
-            case ORACLE:
-                if (persistentEntity.getIdentity() != null) {
-                    // Oracle and MySql doesn't support a batch with returning generated ID: "DML Returning cannot be batched"
-                    return !persistentEntity.getIdentity().isGenerated();
-                }
-                return false;
-            default:
-                return true;
-        }
-    }
-
-    /**
-     * Does supports batch for update queries.
-     *
-     * @param persistentEntity The persistent entity
-     * @param dialect          The dialect
-     * @return true if supported
-     */
-    protected boolean isSupportsBatchUpdate(PersistentEntity persistentEntity, Dialect dialect) {
-        return true;
-    }
-
-    /**
-     * Does supports batch for delete queries.
-     *
-     * @param persistentEntity The persistent entity
-     * @param dialect          The dialect
-     * @return true if supported
-     */
-    protected boolean isSupportsBatchDelete(PersistentEntity persistentEntity, Dialect dialect) {
-        return true;
     }
 
     /**

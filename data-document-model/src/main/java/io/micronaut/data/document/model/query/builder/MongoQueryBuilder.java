@@ -169,7 +169,7 @@ public class MongoQueryBuilder implements QueryBuilder {
             Object finalValue = value;
             traversePersistentProperties(propertyPath.getAssociations(), propertyPath.getProperty(), (associations, property) -> {
                 String path = asPath(associations, property);
-                obj.put(path, singletonMap(op, valueRepresentation(context, propertyPath, new PersistentPropertyPath(associations, property), finalValue)));
+                obj.put(path, singletonMap(op, valueRepresentation(context, propertyPath, PersistentPropertyPath.of(associations, property), finalValue)));
             });
         };
     }
@@ -725,7 +725,7 @@ public class MongoQueryBuilder implements QueryBuilder {
             }
         } else if (TypeRole.ID.equals(name) && entity.getIdentity() != null) {
             // special case handling for ID
-            return new PersistentPropertyPath(Collections.emptyList(), entity.getIdentity(), entity.getIdentity().getName());
+            return PersistentPropertyPath.of(Collections.emptyList(), entity.getIdentity(), entity.getIdentity().getName());
         }
         if (propertyPath == null) {
             if (criterionType == null || criterionType == Sort.Order.class) {

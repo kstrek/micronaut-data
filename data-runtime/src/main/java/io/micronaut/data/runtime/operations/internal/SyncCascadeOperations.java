@@ -3,6 +3,7 @@ package io.micronaut.data.runtime.operations.internal;
 import io.micronaut.core.convert.ConversionService;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.data.annotation.Relation;
+import io.micronaut.data.model.Association;
 import io.micronaut.data.model.query.builder.sql.SqlQueryBuilder;
 import io.micronaut.data.model.runtime.RuntimeAssociation;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
@@ -43,8 +44,9 @@ public class SyncCascadeOperations<Ctx extends OperationContext> extends Abstrac
                 if (ctx.persisted.contains(child)) {
                     continue;
                 }
-                boolean hasId = childPersistentEntity.getIdentity().getProperty().get(child) != null;
-                if (!hasId && (cascadeType == Relation.Cascade.PERSIST)) {
+                RuntimePersistentProperty<Object> identity = childPersistentEntity.getIdentity();
+                boolean hasId = identity.getProperty().get(child) != null;
+                if ((!hasId || identity instanceof Association) && (cascadeType == Relation.Cascade.PERSIST)) {
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("Cascading PERSIST for '{}' association: '{}'", persistentEntity.getName(), cascadeOp.ctx.associations);
                     }
@@ -90,9 +92,9 @@ public class SyncCascadeOperations<Ctx extends OperationContext> extends Abstrac
                         iterator.set(value);
                     }
                 } else if (cascadeType == Relation.Cascade.PERSIST) {
-                    if (helper.supportsBatch(ctx, childPersistentEntity)) {
+                    if (helper.isSupportsBatchInsert(ctx, childPersistentEntity)) {
                         RuntimePersistentProperty<Object> identity = childPersistentEntity.getIdentity();
-                        Predicate<Object> veto = val -> ctx.persisted.contains(val) || identity.getProperty().get(val) != null;
+                        Predicate<Object> veto = val -> ctx.persisted.contains(val) || identity.getProperty().get(val) != null && !(identity instanceof Association);
                         entities = helper.persistBatch(ctx, cascadeManyOp.children, childPersistentEntity, veto);
                     } else {
                         entities = CollectionUtils.iterableToList(cascadeManyOp.children);
@@ -117,7 +119,7 @@ public class SyncCascadeOperations<Ctx extends OperationContext> extends Abstrac
 
                 RuntimeAssociation<Object> association = (RuntimeAssociation) cascadeOp.ctx.getAssociation();
                 if (SqlQueryBuilder.isForeignKeyWithJoinTable(association) && !entities.isEmpty()) {
-                    if (helper.supportsBatch(ctx, childPersistentEntity)) {
+                    if (helper.isSupportsBatchInsert(ctx, childPersistentEntity)) {
                         helper.persistManyAssociationBatch(ctx, association,
                                 cascadeOp.ctx.parent, cascadeOp.ctx.parentPersistentEntity, entities, childPersistentEntity);
                     } else {
@@ -138,7 +140,17 @@ public class SyncCascadeOperations<Ctx extends OperationContext> extends Abstrac
 
     public interface SyncCascadeOperationsHelper<Ctx extends OperationContext> {
 
-        boolean supportsBatch(Ctx ctx, RuntimePersistentEntity<?> persistentEntity);
+        default boolean isSupportsBatchInsert(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
+            return true;
+        }
+
+        default boolean isSupportsBatchUpdate(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
+            return true;
+        }
+
+        default boolean isSupportsBatchDelete(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
+            return true;
+        }
 
         <T> T persistOne(Ctx ctx, T child, RuntimePersistentEntity<T> childPersistentEntity);
 

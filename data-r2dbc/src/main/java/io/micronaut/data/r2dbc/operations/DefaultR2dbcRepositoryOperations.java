@@ -173,11 +173,6 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
     }
 
     @Override
-    public boolean supportsBatch(R2dbcOperationContext ctx, RuntimePersistentEntity<?> persistentEntity) {
-        return ctx.dialect.allowBatch();
-    }
-
-    @Override
     public <T> Mono<T> persistOne(R2dbcOperationContext ctx, T value, RuntimePersistentEntity<T> persistentEntity) {
         DBOperation childSqlPersistOperation = resolveEntityInsert(ctx.annotationMetadata, ctx.repositoryType, value.getClass(), persistentEntity);
         R2dbcEntityOperations<T> op = new R2dbcEntityOperations<>(ctx, childSqlPersistOperation, persistentEntity, value, true);

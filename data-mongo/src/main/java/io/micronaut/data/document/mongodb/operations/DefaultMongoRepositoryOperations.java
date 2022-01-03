@@ -769,11 +769,6 @@ final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperation
     }
 
     @Override
-    public boolean supportsBatch(MongoOperationContext mongoDbOperationContext, RuntimePersistentEntity<?> persistentEntity) {
-        return true;
-    }
-
-    @Override
     public <T> T persistOne(MongoOperationContext ctx, T value, RuntimePersistentEntity<T> persistentEntity) {
         MongoEntityOperation<T> op = createMongoInsertOneOperation(ctx, persistentEntity, value);
         op.persist();

@@ -184,11 +184,6 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
     }
 
     @Override
-    public boolean supportsBatch(JdbcOperationContext ctx, RuntimePersistentEntity<?> persistentEntityt) {
-        return ctx.dialect.allowBatch();
-    }
-
-    @Override
     public <T> T persistOne(JdbcOperationContext ctx, T value, RuntimePersistentEntity<T> persistentEntity) {
         DBOperation childSqlPersistOperation = resolveEntityInsert(ctx.annotationMetadata, ctx.repositoryType, value.getClass(), persistentEntity);
         JdbcEntityOperations<T> persistOneOp = new JdbcEntityOperations<>(ctx, childSqlPersistOperation, persistentEntity, value, true);
@@ -847,6 +842,11 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
                 return introspectedDataMapper.map(rs, dtoType);
             }
         };
+    }
+
+    @Override
+    public boolean isSupportsBatchInsert(JdbcOperationContext jdbcOperationContext, RuntimePersistentEntity<?> persistentEntity) {
+        return isSupportsBatchInsert(persistentEntity, jdbcOperationContext.dialect);
     }
 
     private final class JdbcEntityOperations<T> extends AbstractSyncEntityOperations<JdbcOperationContext, T, SQLException> {

@@ -304,7 +304,7 @@ public abstract class AbstractSqlLikeQueryBuilder implements QueryBuilder {
     }
 
     private PersistentPropertyPath asPersistentPropertyPath(PersistentProperty persistentProperty) {
-        return new PersistentPropertyPath(Collections.emptyList(), persistentProperty, persistentProperty.getName());
+        return PersistentPropertyPath.of(Collections.emptyList(), persistentProperty, persistentProperty.getName());
     }
 
     /**
@@ -914,7 +914,7 @@ public abstract class AbstractSqlLikeQueryBuilder implements QueryBuilder {
                 whereClause.append(operator);
                 propertyParameterCreator.pushParameter(
                         bindingParameter,
-                        newBindingContext(parameterPropertyPath, new PersistentPropertyPath(associations, property))
+                        newBindingContext(parameterPropertyPath, PersistentPropertyPath.of(associations, property))
                 );
                 whereClause.append(LOGICAL_AND);
             });
@@ -1042,7 +1042,7 @@ public abstract class AbstractSqlLikeQueryBuilder implements QueryBuilder {
                                     (BindingParameter) entry.getValue(),
                                     newBindingContext(
                                             propertyPath.propertyPath,
-                                            new PersistentPropertyPath(associations, property, asPath(associations, property))
+                                            PersistentPropertyPath.of(associations, property, asPath(associations, property))
                                     )
                             );
                         });

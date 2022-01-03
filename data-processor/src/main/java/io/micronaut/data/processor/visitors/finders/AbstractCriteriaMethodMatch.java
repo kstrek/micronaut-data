@@ -519,7 +519,7 @@ public abstract class AbstractCriteriaMethodMatch implements MethodMatcher.Metho
 
             if (expression instanceof io.micronaut.data.model.jpa.criteria.PersistentPropertyPath) {
                 io.micronaut.data.model.jpa.criteria.PersistentPropertyPath<?> pp = (io.micronaut.data.model.jpa.criteria.PersistentPropertyPath<?>) expression;
-                PersistentPropertyPath propertyPath = new PersistentPropertyPath(pp.getAssociations(), pp.getProperty());
+                PersistentPropertyPath propertyPath = PersistentPropertyPath.of(pp.getAssociations(), pp.getProperty());
                 if (!isValidType(genericType, (SourcePersistentProperty) propertyPath.getProperty())) {
                     SourcePersistentProperty property = (SourcePersistentProperty) propertyPath.getProperty();
                     throw new IllegalArgumentException("Parameter [" + genericType.getType().getName() + " " + parameter.getName() + "] is not compatible with property [" + property.getType().getName() + " " + property.getName() + "] of entity: " + property.getOwner().getName());
@@ -594,7 +594,7 @@ public abstract class AbstractCriteriaMethodMatch implements MethodMatcher.Metho
                 return null;
             }
         } else {
-            pp = new PersistentPropertyPath(Collections.emptyList(), prop, propertyName);
+            pp = PersistentPropertyPath.of(Collections.emptyList(), prop, propertyName);
         }
 
         PersistentEntityFrom<?, ?> path = root;

@@ -26,6 +26,7 @@ import io.micronaut.data.annotation.TypeRole;
 import io.micronaut.data.exceptions.DataAccessException;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.DataType;
+import io.micronaut.data.model.PersistentEntity;
 import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.query.QueryModel;
 import io.micronaut.data.model.query.QueryParameter;
@@ -340,6 +341,52 @@ public abstract class AbstractSqlRepositoryOperations<Cnt, RS, PS, Exc extends E
             }
         };
     }
+
+    /**
+     * Does supports batch for update queries.
+     *
+     * @param persistentEntity The persistent entity
+     * @param dialect          The dialect
+     * @return true if supported
+     */
+    protected boolean isSupportsBatchInsert(PersistentEntity persistentEntity, Dialect dialect) {
+        switch (dialect) {
+            case SQL_SERVER:
+                return false;
+            case MYSQL:
+            case ORACLE:
+                if (persistentEntity.getIdentity() != null) {
+                    // Oracle and MySql doesn't support a batch with returning generated ID: "DML Returning cannot be batched"
+                    return !persistentEntity.getIdentity().isGenerated();
+                }
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Does supports batch for update queries.
+     *
+     * @param persistentEntity The persistent entity
+     * @param dialect          The dialect
+     * @return true if supported
+     */
+    protected boolean isSupportsBatchUpdate(PersistentEntity persistentEntity, Dialect dialect) {
+        return true;
+    }
+
+    /**
+     * Does supports batch for delete queries.
+     *
+     * @param persistentEntity The persistent entity
+     * @param dialect          The dialect
+     * @return true if supported
+     */
+    protected boolean isSupportsBatchDelete(PersistentEntity persistentEntity, Dialect dialect) {
+        return true;
+    }
+
 
     /**
      * Used to cache queries for entities.
