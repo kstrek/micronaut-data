@@ -56,6 +56,7 @@ public class StoredSqlOperation extends DBOperation {
      *
      * @param queryBuilder           The queryBuilder.
      * @param query                  The query
+     * @param expandableQueryParts   The expandableQueryParts
      * @param queryParameterBindings The query parameters
      * @param isOptimisticLock       Is optimistic locking
      */
@@ -268,6 +269,9 @@ public class StoredSqlOperation extends DBOperation {
         return 1;
     }
 
+    /**
+     * @return The query builder
+     */
     public SqlQueryBuilder getQueryBuilder() {
         return queryBuilder;
     }

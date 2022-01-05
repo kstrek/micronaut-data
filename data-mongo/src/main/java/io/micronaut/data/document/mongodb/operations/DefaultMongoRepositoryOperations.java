@@ -1,3 +1,18 @@
+/*
+ * Copyright 2017-2022 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.micronaut.data.document.mongodb.operations;
 
 import com.mongodb.client.AggregateIterable;
@@ -96,6 +111,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+/**
+ * Default Mongo repository operations.
+ *
+ * @author Denis Stepanov
+ * @since 3.3
+ */
 @EachBean(MongoClient.class)
 @Internal
 final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperations<ClientSession, Object> implements
@@ -519,6 +540,8 @@ final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperation
                     case EMBEDDED:
                         triggerPostLoad(o, associatedEntity, annotationMetadata);
                         continue;
+                    default:
+                        throw new IllegalStateException("Unknown kind: " + runtimeAssociation.getKind());
                 }
             }
         }
@@ -843,7 +866,7 @@ final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperation
     }
 
     private <T> T withClientSession(Function<ClientSession, T> function) {
-        ClientSession clientSession = transactionManager.findConnection();
+        ClientSession clientSession = transactionManager.findClientSession();
         if (clientSession != null) {
             return function.apply(clientSession);
         }
@@ -1012,7 +1035,7 @@ final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperation
                 if (hasGeneratedId) {
                     Map<Integer, BsonValue> insertedIds = insertManyResult.getInsertedIds();
                     RuntimePersistentProperty<T> identity = persistentEntity.getIdentity();
-                    BeanProperty<T, Object> IdProperty = (BeanProperty<T, Object>) identity.getProperty();
+                    BeanProperty<T, Object> idProperty = (BeanProperty<T, Object>) identity.getProperty();
                     int index = 0;
                     for (Data d : entities) {
                         if (!d.vetoed) {
@@ -1020,7 +1043,7 @@ final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperation
                             if (id == null) {
                                 throw new DataAccessException("Failed to generate ID for entity: " + d.entity);
                             }
-                            d.entity = updateEntityId(IdProperty, d.entity, id);
+                            d.entity = updateEntityId(idProperty, d.entity, id);
                         }
                         index++;
                     }
@@ -1028,7 +1051,6 @@ final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperation
             }
         };
     }
-
 
     @NonNull
     @Override

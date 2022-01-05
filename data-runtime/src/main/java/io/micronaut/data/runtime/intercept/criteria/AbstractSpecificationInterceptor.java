@@ -93,8 +93,7 @@ public abstract class AbstractSpecificationInterceptor<T, R> extends AbstractQue
             }
         }
 
-        QueryBuilder sqlQueryBuilder = sqlQueryBuilderForRepositories.computeIfAbsent(methodKey, repositoryMethodKey ->
-                {
+        QueryBuilder sqlQueryBuilder = sqlQueryBuilderForRepositories.computeIfAbsent(methodKey, repositoryMethodKey -> {
                     Class<QueryBuilder> builder = context.getAnnotationMetadata().classValue(RepositoryConfiguration.class, "queryBuilder")
                             .orElseThrow(() -> new IllegalStateException("Cannot determine QueryBuilder"));
                     BeanIntrospection<QueryBuilder> introspection = BeanIntrospection.getIntrospection(builder);

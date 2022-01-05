@@ -1,5 +1,21 @@
+/*
+ * Copyright 2017-2022 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.micronaut.data.runtime.operations.internal;
 
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.convert.ConversionService;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.data.annotation.Relation;
@@ -16,16 +32,41 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.function.Predicate;
 
-public class SyncCascadeOperations<Ctx extends OperationContext> extends AbstractCascadeOperations {
+/**
+ * Synchronous cascade operations.
+ *
+ * @param <Ctx> The operation context.
+ * @author Denis Stepanov
+ * @since 3.3
+ */
+@Internal
+public final class SyncCascadeOperations<Ctx extends OperationContext> extends AbstractCascadeOperations {
 
     private static final Logger LOG = LoggerFactory.getLogger(SyncCascadeOperations.class);
     private final SyncCascadeOperationsHelper<Ctx> helper;
 
+    /**
+     * Default constructor.
+     *
+     * @param conversionService The conversionService
+     * @param helper            The helper
+     */
     public SyncCascadeOperations(ConversionService<?> conversionService, SyncCascadeOperationsHelper<Ctx> helper) {
         super(conversionService);
         this.helper = helper;
     }
 
+    /**
+     * Cascade the entity operation.
+     *
+     * @param ctx              The context
+     * @param entity           The entity instance
+     * @param persistentEntity The persistent entity
+     * @param isPost           Is post cascade?
+     * @param cascadeType      The cascade type
+     * @param <T>              The entity type
+     * @return The entity instance
+     */
     public <T> T cascadeEntity(Ctx ctx,
                                T entity,
                                RuntimePersistentEntity<T> persistentEntity,
@@ -138,37 +179,112 @@ public class SyncCascadeOperations<Ctx extends OperationContext> extends Abstrac
         return entity;
     }
 
+    /**
+     * The cascade operations helper.
+     *
+     * @param <Ctx> The operation context.
+     */
     public interface SyncCascadeOperationsHelper<Ctx extends OperationContext> {
 
+        /**
+         * Is supports batch insert.
+         *
+         * @param ctx              The context
+         * @param persistentEntity The persistent entity
+         * @return True if supports
+         */
         default boolean isSupportsBatchInsert(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
             return true;
         }
 
+        /**
+         * Is supports batch update.
+         *
+         * @param ctx              The context
+         * @param persistentEntity The persistent entity
+         * @return True if supports
+         */
         default boolean isSupportsBatchUpdate(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
             return true;
         }
 
+        /**
+         * Is supports batch delete.
+         *
+         * @param ctx              The context
+         * @param persistentEntity The persistent entity
+         * @return True if supports
+         */
         default boolean isSupportsBatchDelete(Ctx ctx, RuntimePersistentEntity<?> persistentEntity) {
             return true;
         }
 
-        <T> T persistOne(Ctx ctx, T child, RuntimePersistentEntity<T> childPersistentEntity);
+        /**
+         * Persist one entity during cascade.
+         *
+         * @param ctx              The context
+         * @param entityValue      The entity value
+         * @param persistentEntity The persistent entity
+         * @param <T>              The entity type
+         * @return The entity value
+         */
+        <T> T persistOne(Ctx ctx, T entityValue, RuntimePersistentEntity<T> persistentEntity);
 
-        <T> List<T> persistBatch(Ctx ctx, Iterable<T> values,
-                                 RuntimePersistentEntity<T> childPersistentEntity,
+        /**
+         * Persist multiple entities in batch during cascade.
+         *
+         * @param ctx              The context
+         * @param entityValues     The entity values
+         * @param persistentEntity The persistent entity
+         * @param predicate        The veto predicate
+         * @param <T>              The entity type
+         * @return The entity values
+         */
+        <T> List<T> persistBatch(Ctx ctx,
+                                 Iterable<T> entityValues,
+                                 RuntimePersistentEntity<T> persistentEntity,
                                  Predicate<T> predicate);
 
-        <T> T updateOne(Ctx ctx, T child, RuntimePersistentEntity<T> childPersistentEntity);
+        /**
+         * Update one entity during cascade.
+         *
+         * @param ctx              The context
+         * @param entityValue      The entity value
+         * @param persistentEntity The persistent entity
+         * @param <T>              The entity type
+         * @return The entity value
+         */
+        <T> T updateOne(Ctx ctx, T entityValue, RuntimePersistentEntity<T> persistentEntity);
 
+        /**
+         * Persist JOIN table relationship.
+         *
+         * @param ctx                    The context
+         * @param runtimeAssociation     The association
+         * @param parentEntityValue      The parent entity value
+         * @param parentPersistentEntity The parent persistent entity
+         * @param childEntityValue       The child entity value
+         * @param childPersistentEntity  The child persistent entity
+         */
         void persistManyAssociation(Ctx ctx,
                                     RuntimeAssociation runtimeAssociation,
-                                    Object value, RuntimePersistentEntity<Object> persistentEntity,
-                                    Object child, RuntimePersistentEntity<Object> childPersistentEntity);
+                                    Object parentEntityValue, RuntimePersistentEntity<Object> parentPersistentEntity,
+                                    Object childEntityValue, RuntimePersistentEntity<Object> childPersistentEntity);
 
+        /**
+         * Persist JOIN table relationships in batch.
+         *
+         * @param ctx                    The context
+         * @param runtimeAssociation     The association
+         * @param parentEntityValue      The parent entity value
+         * @param parentPersistentEntity The parent persistent entity
+         * @param childEntityValues      The child entity values
+         * @param childPersistentEntity  The child persistent entity
+         */
         void persistManyAssociationBatch(Ctx ctx,
                                          RuntimeAssociation runtimeAssociation,
-                                         Object value, RuntimePersistentEntity<Object> persistentEntity,
-                                         Iterable<Object> child, RuntimePersistentEntity<Object> childPersistentEntity);
+                                         Object parentEntityValue, RuntimePersistentEntity<Object> parentPersistentEntity,
+                                         Iterable<Object> childEntityValues, RuntimePersistentEntity<Object> childPersistentEntity);
     }
 
 

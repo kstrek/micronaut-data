@@ -65,6 +65,7 @@ public class PersistentPropertyPath {
      *
      * @param associations The associations
      * @param property     The property
+     * @return new instance of {@link PersistentPropertyPath} or {@link PersistentAssociationPath}
      */
     public static PersistentPropertyPath of(List<Association> associations, @NonNull PersistentProperty property) {
         return of(associations, property, null);
@@ -76,6 +77,7 @@ public class PersistentPropertyPath {
      * @param associations The associations
      * @param property     The property
      * @param path         The path
+     * @return new instance of {@link PersistentPropertyPath} or {@link PersistentAssociationPath}
      */
     public static PersistentPropertyPath of(List<Association> associations, @NonNull PersistentProperty property, @Nullable String path) {
         if (property instanceof Association) {
@@ -84,6 +86,14 @@ public class PersistentPropertyPath {
         return new PersistentPropertyPath(associations, property, path);
     }
 
+    /**
+     * Sets property path value.
+     * (Only possible for runtime properties)
+     *
+     * @param bean  The root bean
+     * @param value The value
+     * @return The root bean - possibly modified
+     */
     public Object setPropertyValue(Object bean, Object value) {
         if (!(property instanceof RuntimePersistentProperty)) {
             throw new IllegalStateException("Expected runtime property!");
@@ -115,6 +125,13 @@ public class PersistentPropertyPath {
         return x;
     }
 
+    /**
+     * Gets property path value.
+     * (Only possible for runtime properties)
+     *
+     * @param bean The root bean
+     * @return The value
+     */
     public Object getPropertyValue(Object bean) {
         if (!(property instanceof RuntimePersistentProperty)) {
             throw new IllegalStateException("Expected runtime property!");

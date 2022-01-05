@@ -42,7 +42,7 @@ public @interface DataMethod {
     /**
      * The annotation name.
      */
-    static final String NAME = DataMethod.class.getName();
+    String NAME = DataMethod.class.getName();
 
     /**
      * The member that holds expandable query parts.

@@ -87,10 +87,10 @@ import static io.micronaut.data.intercept.annotation.DataMethod.META_MEMBER_PAGE
  */
 public abstract class AbstractQueryInterceptor<T, R> implements DataInterceptor<T, R> {
     protected final RepositoryOperations operations;
+    protected final PreparedQueryResolver preparedQueryResolver;
     private final ConcurrentMap<RepositoryMethodKey, StoredQuery> countQueries = new ConcurrentHashMap<>(50);
     private final ConcurrentMap<RepositoryMethodKey, StoredQuery> queries = new ConcurrentHashMap<>(50);
     private final StoredQueryResolver storedQueryResolver;
-    protected final PreparedQueryResolver preparedQueryResolver;
     private final PagedQueryResolver pagedQueryResolver;
 
     /**
@@ -190,6 +190,7 @@ public abstract class AbstractQueryInterceptor<T, R> implements DataInterceptor<
      * @param methodKey  The method key
      * @param context    The context
      * @param resultType The result type
+     * @param isCount    Is count query
      * @return The query
      */
     protected final <RT> PreparedQuery<?, RT> prepareQuery(RepositoryMethodKey methodKey,
@@ -247,7 +248,7 @@ public abstract class AbstractQueryInterceptor<T, R> implements DataInterceptor<
      * Obtains the root entity or throws an exception if it not available.
      *
      * @param context The context
-     * @param <E> The entity type
+     * @param <E>     The entity type
      * @return The root entity type
      * @throws IllegalStateException If the root entity is unavailable
      */
@@ -650,8 +651,8 @@ public abstract class AbstractQueryInterceptor<T, R> implements DataInterceptor<
     /**
      * Get the delete all batch operation for the given context.
      *
-     * @param context  The context
-     * @param <E>      The entity type
+     * @param context The context
+     * @param <E>     The entity type
      * @return The paged query
      */
     @NonNull

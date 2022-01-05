@@ -15,10 +15,8 @@
  */
 package io.micronaut.data.r2dbc.operations;
 
-import io.micronaut.data.operations.RepositoryOperations;
-
 /**
- * Implementation of {@link RepositoryOperations} that blocks every call from {@link ReactorReactiveRepositoryOperations}.
+ * Implementation of {@link io.micronaut.data.operations.RepositoryOperations} that blocks every call from {@link ReactorReactiveRepositoryOperations}.
  *
  * @author Denis Stepanov
  * @since 2.4.0

@@ -15,10 +15,8 @@
  */
 package io.micronaut.data.r2dbc.operations;
 
-import io.micronaut.data.operations.reactive.ReactiveRepositoryOperations;
-
 /**
- * The version of {@link ReactiveRepositoryOperations} which exposes reactor publisher types.
+ * The version of {@link io.micronaut.data.operations.reactive.ReactiveRepositoryOperations} which exposes reactor publisher types.
  *
  * @author Denis Stepanov
  * @since 2.4.0

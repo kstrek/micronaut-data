@@ -1,5 +1,21 @@
+/*
+ * Copyright 2017-2022 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.micronaut.data.runtime.operations.internal;
 
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.convert.ConversionService;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.data.annotation.Relation;
@@ -19,6 +35,16 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Abstract synchronous entities operations.
+ *
+ * @param <Ctx> The operation context
+ * @param <T>   The entity type
+ * @param <Exc> The exception
+ * @author Denis Stepanov
+ * @since 3.3
+ */
+@Internal
 public abstract class AbstractSyncEntitiesOperations<Ctx extends OperationContext, T, Exc extends Exception> extends SyncEntitiesOperations<T, Exc> {
 
     protected final Ctx ctx;
@@ -28,6 +54,17 @@ public abstract class AbstractSyncEntitiesOperations<Ctx extends OperationContex
     protected final boolean insert;
     protected final boolean hasGeneratedId;
 
+    /**
+     * Default constructor.
+     *
+     * @param ctx                 The context
+     * @param cascadeOperations   The cascade operations
+     * @param conversionService   The conversion service
+     * @param entityEventListener The entity event listener
+     * @param persistentEntity    The persistent entity
+     * @param entities            The entities
+     * @param insert              The insert
+     */
     protected AbstractSyncEntitiesOperations(Ctx ctx,
                                              SyncCascadeOperations<Ctx> cascadeOperations,
                                              ConversionService<?> conversionService,
@@ -122,10 +159,12 @@ public abstract class AbstractSyncEntitiesOperations<Ctx extends OperationContex
         }
     }
 
+    @Override
     public List<T> getEntities() {
         return entities.stream().map(d -> d.entity).collect(Collectors.toList());
     }
 
+    @SuppressWarnings("VisibilityModifier")
     protected class Data {
         public T entity;
         public Map<QueryParameterBinding, Object> previousValues;

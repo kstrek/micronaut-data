@@ -1004,6 +1004,7 @@ public final class DefaultJdbcRepositoryOperations extends AbstractSqlRepository
 
     }
 
+    @SuppressWarnings("VisibilityModifier")
     protected static class JdbcOperationContext extends OperationContext {
 
         public final Connection connection;

@@ -1,6 +1,22 @@
+/*
+ * Copyright 2017-2022 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.micronaut.data.runtime.operations.internal;
 
 import io.micronaut.core.annotation.AnnotationMetadata;
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.core.convert.ArgumentConversionContext;
 import io.micronaut.core.convert.ConversionContext;
@@ -20,10 +36,22 @@ import java.util.Collections;
 import java.util.List;
 import java.util.ListIterator;
 
-public abstract class AbstractCascadeOperations {
+/**
+ * Abstract cascade operations.
+ *
+ * @author Denis Stepanov
+ * @since 3.3
+ */
+@Internal
+abstract class AbstractCascadeOperations {
 
     private final ConversionService<?> conversionService;
 
+    /**
+     * Default constructor.
+     *
+     * @param conversionService The conversion service.
+     */
     protected AbstractCascadeOperations(ConversionService<?> conversionService) {
         this.conversionService = conversionService;
     }
@@ -287,9 +315,10 @@ public abstract class AbstractCascadeOperations {
         /**
          * Create a new instance.
          *
-         * @param rootAssociations The root associations.
-         * @param parent           The parent
-         * @param associations     The associations
+         * @param rootAssociations       The root associations.
+         * @param parent                 The parent
+         * @param parentPersistentEntity The parentPersistentEntity
+         * @param associations           The associations
          */
         CascadeContext(List<Association> rootAssociations, Object parent, RuntimePersistentEntity<Object> parentPersistentEntity, List<Association> associations) {
             this.rootAssociations = rootAssociations;

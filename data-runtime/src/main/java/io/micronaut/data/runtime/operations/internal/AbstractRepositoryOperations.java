@@ -30,9 +30,6 @@ import io.micronaut.data.event.EntityEventListener;
 import io.micronaut.data.exceptions.DataAccessException;
 import io.micronaut.data.exceptions.OptimisticLockException;
 import io.micronaut.data.model.Association;
-import io.micronaut.data.model.Embedded;
-import io.micronaut.data.model.PersistentEntity;
-import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.PersistentPropertyPath;
 import io.micronaut.data.model.query.JoinPath;
 import io.micronaut.data.model.runtime.AttributeConverterRegistry;
@@ -46,7 +43,6 @@ import io.micronaut.data.runtime.event.DefaultEntityEventContext;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.codec.MediaTypeCodec;
 
-import java.util.AbstractMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,13 +53,12 @@ import java.util.stream.Stream;
  * Abstract SQL repository implementation not specifically bound to JDBC.
  *
  * @param <Cnt> The connection type
+ * @param <PS>  The prepared statement
  * @author Denis Stepanov
  * @since 3.1.0
  */
-@SuppressWarnings("FileLength")
 @Internal
-public abstract class AbstractRepositoryOperations<Cnt, PS>
-        implements ApplicationContextProvider, OpContext<Cnt, PS> {
+public abstract class AbstractRepositoryOperations<Cnt, PS> implements ApplicationContextProvider, OpContext<Cnt, PS> {
     protected final MediaTypeCodec jsonCodec;
     protected final EntityEventListener<Object> entityEventRegistry;
     protected final DateTimeProvider dateTimeProvider;
@@ -162,29 +157,6 @@ public abstract class AbstractRepositoryOperations<Cnt, PS>
         return beanProperty;
     }
 
-    protected Stream<Map.Entry<PersistentProperty, Object>> idPropertiesWithValues(PersistentProperty property, Object value) {
-        Object propertyValue = ((RuntimePersistentProperty) property).getProperty().get(value);
-        if (property instanceof Embedded) {
-            Embedded embedded = (Embedded) property;
-            PersistentEntity embeddedEntity = embedded.getAssociatedEntity();
-            return embeddedEntity.getPersistentProperties()
-                    .stream()
-                    .flatMap(prop -> idPropertiesWithValues(prop, propertyValue));
-        } else if (property instanceof Association) {
-            Association association = (Association) property;
-            if (association.isForeignKey()) {
-                return Stream.empty();
-            }
-            PersistentEntity associatedEntity = association.getAssociatedEntity();
-            PersistentProperty identity = associatedEntity.getIdentity();
-            if (identity == null) {
-                throw new IllegalStateException("Identity cannot be missing for: " + associatedEntity);
-            }
-            return idPropertiesWithValues(identity, propertyValue);
-        }
-        return Stream.of(new AbstractMap.SimpleEntry<>(property, propertyValue));
-    }
-
     /**
      * Compare the expected modifications and the received rows count. If not equals throw {@link OptimisticLockException}.
      *
@@ -250,28 +222,4 @@ public abstract class AbstractRepositoryOperations<Cnt, PS>
     protected abstract ConversionContext createTypeConversionContext(Cnt connection,
                                                                      @Nullable RuntimePersistentProperty<?> property,
                                                                      @Nullable Argument<?> argument);
-
-    /**
-     * Simple function interface with two inputs and without return type.
-     *
-     * @param <In1> The input 1 type
-     * @param <In2> The input 2 type
-     * @param <Exc> The exception type
-     */
-    protected interface DBOperation2<In1, In2, Exc extends Exception> {
-
-        void process(In1 in1, In2 in2) throws Exc;
-
-    }
-
-    /**
-     * Functional interface used to supply a statement.
-     *
-     * @param <PS> The prepared statement type
-     */
-    @FunctionalInterface
-    protected interface StatementSupplier<PS> {
-        PS create(String ps) throws Exception;
-    }
-
 }

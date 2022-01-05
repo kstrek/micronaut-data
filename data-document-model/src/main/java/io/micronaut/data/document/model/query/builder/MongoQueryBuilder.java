@@ -1,3 +1,18 @@
+/*
+ * Copyright 2017-2022 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.micronaut.data.document.model.query.builder;
 
 import io.micronaut.core.annotation.AnnotationMetadata;
@@ -52,7 +67,13 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static java.util.Collections.singletonMap;
 
-public class MongoQueryBuilder implements QueryBuilder {
+/**
+ * The Mongo query builder.
+ *
+ * @author Denis Stepanov
+ * @since 3.3
+ */
+public final class MongoQueryBuilder implements QueryBuilder {
 
     protected final Map<Class, CriterionHandler> queryHandlers = new HashMap<>(30);
 
@@ -174,15 +195,6 @@ public class MongoQueryBuilder implements QueryBuilder {
         };
     }
 
-    private String getPath(PersistentPropertyPath propertyPath) {
-        PersistentProperty property = propertyPath.getProperty();
-        String propertyName = getPropertyPersistName(property);
-        StringJoiner sj = new StringJoiner(".");
-        propertyPath.getAssociations().forEach(a -> sj.add(getPropertyPersistName(a)));
-        sj.add(propertyName);
-        return sj.toString();
-    }
-
     private String getPropertyPersistName(PersistentProperty property) {
         if (property.getOwner() != null && property.getOwner().getIdentity() == property) {
             return "_id";
@@ -223,7 +235,7 @@ public class MongoQueryBuilder implements QueryBuilder {
         };
     }
 
-    protected Object asLiteral(@Nullable Object value) {
+    private Object asLiteral(@Nullable Object value) {
         if (value instanceof RegexPattern) {
             return "'" + Pattern.quote(((RegexPattern) value).value) + "'";
         }
@@ -504,14 +516,7 @@ public class MongoQueryBuilder implements QueryBuilder {
 
     @NonNull
     private List<String> getJoinedFields(AnnotationMetadata annotationMetadata, boolean associationOwner, String columnType) {
-//        AnnotationValue<Annotation> joinTable = annotationMetadata.getAnnotation(ANN_JOIN_TABLE);
-//        if (joinTable != null) {
-//            return joinTable.getAnnotations(associationOwner ? "joinColumns" : "inverseJoinColumns")
-//                    .stream()
-//                    .map(ann -> ann.stringValue(columnType).orElse(null))
-//                    .filter(Objects::nonNull)
-//                    .collect(Collectors.toList());
-//        }
+        // TODO: support @JoinTable style annotation
         return Collections.emptyList();
     }
 
@@ -525,18 +530,6 @@ public class MongoQueryBuilder implements QueryBuilder {
         }
         joiner.add(getPropertyPersistName(property));
         return joiner.toString();
-    }
-
-    private static class LookupsStage {
-
-        final PersistentEntity persistentEntity;
-
-        List<Map<String, Object>> pipeline = new ArrayList<>();
-        Map<String, LookupsStage> subLookups = new HashMap<>();
-
-        private LookupsStage(PersistentEntity persistentEntity) {
-            this.persistentEntity = persistentEntity;
-        }
     }
 
     private Map<String, Object> lookup(String from, String localField, String foreignField, List<Map<String, Object>> pipeline, String as) {
@@ -635,20 +628,20 @@ public class MongoQueryBuilder implements QueryBuilder {
                                  PersistentEntity entity,
                                  Map<String, Object> projectionObj,
                                  Map<String, Object> countObj) {
-        if (projectionList.isEmpty()) {
-        } else {
-            for (Iterator i = projectionList.iterator(); i.hasNext(); ) {
-                QueryModel.Projection projection = (QueryModel.Projection) i.next();
+        if (!projectionList.isEmpty()) {
+            for (QueryModel.Projection projection : projectionList) {
                 if (projection instanceof QueryModel.LiteralProjection) {
-
+//                    throw new UnsupportedOperationException();
                 } else if (projection instanceof QueryModel.CountProjection) {
                     countObj.put("$count", "result");
                 } else if (projection instanceof QueryModel.DistinctProjection) {
+                    throw new UnsupportedOperationException();
                 } else if (projection instanceof QueryModel.IdProjection) {
                     projectionObj.put("_id", 1);
                 } else if (projection instanceof QueryModel.PropertyProjection) {
                     QueryModel.PropertyProjection pp = (QueryModel.PropertyProjection) projection;
                     if (projection instanceof QueryModel.AvgProjection) {
+                        throw new UnsupportedOperationException();
                     } else if (projection instanceof QueryModel.DistinctPropertyProjection) {
                         addProjection(projectionObj, pp, "$max");
                     } else if (projection instanceof QueryModel.SumProjection) {
@@ -658,6 +651,7 @@ public class MongoQueryBuilder implements QueryBuilder {
                     } else if (projection instanceof QueryModel.MaxProjection) {
                         addProjection(projectionObj, pp, "$max");
                     } else if (projection instanceof QueryModel.CountDistinctProjection) {
+                        throw new UnsupportedOperationException();
                     } else {
                         String propertyName = pp.getPropertyName();
                         PersistentPropertyPath propertyPath = entity.getPropertyPath(propertyName);
@@ -761,7 +755,7 @@ public class MongoQueryBuilder implements QueryBuilder {
 
     @Override
     public QueryResult buildUpdate(AnnotationMetadata annotationMetadata, QueryModel query, List<String> propertiesToUpdate) {
-        throw new IllegalStateException("Not supported!");
+        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -855,12 +849,12 @@ public class MongoQueryBuilder implements QueryBuilder {
 
     @Override
     public QueryResult buildOrderBy(PersistentEntity entity, Sort sort) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public QueryResult buildPagination(Pageable pageable) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     private String toJsonString(Object obj) {
@@ -934,7 +928,7 @@ public class MongoQueryBuilder implements QueryBuilder {
      * @param handler The handler
      * @param <T>     The criterion type
      */
-    protected <T extends QueryModel.Criterion> void addCriterionHandler(Class<T> clazz, CriterionHandler<T> handler) {
+    private <T extends QueryModel.Criterion> void addCriterionHandler(Class<T> clazz, CriterionHandler<T> handler) {
         queryHandlers.put(clazz, handler);
     }
 
@@ -997,12 +991,13 @@ public class MongoQueryBuilder implements QueryBuilder {
      *
      * @param <T> The criterion type
      */
-    protected interface CriterionHandler<T extends QueryModel.Criterion> {
+    private interface CriterionHandler<T extends QueryModel.Criterion> {
 
         /**
          * Handles a criterion.
          *
          * @param context   The context
+         * @param query     The query
          * @param criterion The criterion
          */
         void handle(CriteriaContext context, Map<String, Object> query, T criterion);
@@ -1011,7 +1006,7 @@ public class MongoQueryBuilder implements QueryBuilder {
     /**
      * A criterion context.
      */
-    protected interface CriteriaContext extends PropertyParameterCreator {
+    private interface CriteriaContext extends PropertyParameterCreator {
 
         QueryState getQueryState();
 
@@ -1030,6 +1025,20 @@ public class MongoQueryBuilder implements QueryBuilder {
     }
 
     /**
+     * The lookups stage data holder.
+     */
+    private static final class LookupsStage {
+
+        private final PersistentEntity persistentEntity;
+        private final List<Map<String, Object>> pipeline = new ArrayList<>();
+        private final Map<String, LookupsStage> subLookups = new HashMap<>();
+
+        private LookupsStage(PersistentEntity persistentEntity) {
+            this.persistentEntity = persistentEntity;
+        }
+    }
+
+    /**
      * The state of the query.
      */
     @Internal
@@ -1040,17 +1049,13 @@ public class MongoQueryBuilder implements QueryBuilder {
         private final Map<String, String> additionalRequiredParameters = new LinkedHashMap<>();
         private final List<QueryParameterBinding> parameterBindings;
         private final boolean allowJoins;
-        private final QueryModel queryObject;
-        private final boolean escape;
         private final PersistentEntity entity;
 
         private final LookupsStage rootLookups;
 
         private QueryState(QueryModel query, boolean allowJoins, boolean useAlias) {
             this.allowJoins = allowJoins;
-            this.queryObject = query;
             this.entity = query.getPersistentEntity();
-            this.escape = shouldEscape();
             this.rootAlias = useAlias ? null : null;
             this.parameterBindings = new ArrayList<>(entity.getPersistentPropertyNames().size());
             this.rootLookups = new LookupsStage(entity);
@@ -1071,67 +1076,12 @@ public class MongoQueryBuilder implements QueryBuilder {
             return entity;
         }
 
-//        /**
-//         * Add a required parameter.
-//         *
-//         * @param name The name
-//         * @return name A placeholder in a query
-//         */
-//        public String addAdditionalRequiredParameter(@NonNull String name) {
-//            AbstractSqlLikeQueryBuilder.Placeholder placeholder = newParameter();
-//            additionalRequiredParameters.put(placeholder.key, name);
-//            return placeholder.name;
-//        }
-
-        /**
-         * @return The query string
-         */
-
         /**
          * @return Does the query allow joins
          */
         public boolean isAllowJoins() {
             return allowJoins;
         }
-
-//        /**
-//         * Applies a join for the given association.
-//         *
-//         * @param jp The join path
-//         * @return The alias
-//         */
-//        public String applyJoin(@NonNull JoinPath jp) {
-//            String joinAlias = appliedJoinPaths.get(jp.getPath());
-//            if (joinAlias != null) {
-//                return joinAlias;
-//            }
-//            Optional<JoinPath> ojp = getQueryModel().getJoinPath(jp.getPath());
-//            if (ojp.isPresent()) {
-//                jp = ojp.get();
-//            }
-//            StringBuilder stringBuilder = getQuery();
-//            Join.Type jt = jp.getJoinType();
-//            String joinType = resolveJoinType(jt);
-//
-//            String[] associationAlias = buildJoin(
-//                    getRootAlias(),
-//                    jp,
-//                    joinType,
-//                    stringBuilder,
-//                    appliedJoinPaths,
-//                    this);
-//            Association[] associationArray = jp.getAssociationPath();
-//            StringJoiner associationPath = new StringJoiner(".");
-//            String lastAlias = null;
-//            for (int i = 0; i < associationAlias.length; i++) {
-//                associationPath.add(associationArray[i].getName());
-//                String computedAlias = associationAlias[i];
-//                appliedJoinPaths.put(associationPath.toString(), computedAlias);
-//                lastAlias = computedAlias;
-//            }
-//            return lastAlias;
-//        }
-//
 
         /**
          * Checks if the path is joined already.
@@ -1146,13 +1096,6 @@ public class MongoQueryBuilder implements QueryBuilder {
                 }
             }
             return joinPaths.contains(associationPath);
-        }
-
-        /**
-         * @return Should escape the query
-         */
-        public boolean shouldEscape() {
-            return escape;
         }
 
         /**
@@ -1191,117 +1134,7 @@ public class MongoQueryBuilder implements QueryBuilder {
 
     }
 
-    /**
-     * Represents a placeholder in query.
-     */
-    public static final class Placeholder {
-        private final String name;
-        private final String key;
-
-        /**
-         * Default constructor.
-         *
-         * @param name The name of the place holder
-         * @param key  The key to set the value of the place holder
-         */
-        public Placeholder(String name, String key) {
-            this.name = name;
-            this.key = key;
-        }
-
-        @Override
-        public String toString() {
-            return name;
-        }
-
-        /**
-         * @return The place holder name
-         */
-        public String getName() {
-            return name;
-        }
-
-        /**
-         * This the precomputed key to set the place holder. In SQL this would be the index.
-         *
-         * @return The key used to set the placeholder.
-         */
-        public String getKey() {
-            return key;
-        }
-    }
-
-    /**
-     * Represents a path to a property.
-     */
-    protected class QueryPropertyPath {
-        private final PersistentPropertyPath propertyPath;
-        private final String tableAlias;
-
-        /**
-         * Default constructor.
-         *
-         * @param propertyPath The propertyPath
-         * @param tableAlias   The tableAlias
-         */
-        public QueryPropertyPath(@NotNull PersistentPropertyPath propertyPath, @Nullable String tableAlias) {
-            this.propertyPath = propertyPath;
-            this.tableAlias = tableAlias;
-        }
-
-        /**
-         * @return The associations
-         */
-        @NonNull
-        public List<Association> getAssociations() {
-            return propertyPath.getAssociations();
-        }
-
-        /**
-         * @return The property
-         */
-        @NonNull
-        public PersistentProperty getProperty() {
-            return propertyPath.getProperty();
-        }
-
-        /**
-         * @return The path
-         */
-        @NonNull
-        public String getPath() {
-            return propertyPath.getPath();
-        }
-
-        /**
-         * @return The path
-         */
-        @Nullable
-        public String getTableAlias() {
-            return tableAlias;
-        }
-
-//        /**
-//         * @return already escaped column name
-//         */
-//        public String getColumnName() {
-//            String columnName = getNamingStrategy().mappedName(propertyPath.getAssociations(), propertyPath.getProperty());
-//            if (shouldEscape()) {
-//                return quote(columnName);
-//            }
-//            return columnName;
-//        }
-
-        /**
-         * @return the naming strategy
-         */
-        public NamingStrategy getNamingStrategy() {
-            return propertyPath.getNamingStrategy();
-        }
-
-    }
-
-    private static class RegexPattern {
+    private static final class RegexPattern {
         private final String value;
 
         private RegexPattern(String value) {

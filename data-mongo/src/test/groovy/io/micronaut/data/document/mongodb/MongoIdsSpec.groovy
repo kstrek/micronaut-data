@@ -24,7 +24,7 @@ import io.micronaut.data.annotation.GeneratedValue
 import io.micronaut.data.annotation.Id
 import io.micronaut.data.annotation.MappedEntity
 import io.micronaut.data.document.mongodb.operations.DefaultMongoRepositoryOperations
-import io.micronaut.data.document.mongodb.operations.DefaultReactiveMongoDbRepositoryOperations
+
 import io.micronaut.data.model.runtime.InsertOperation
 import io.micronaut.data.model.runtime.StoredQuery
 import io.micronaut.serde.annotation.Serdeable

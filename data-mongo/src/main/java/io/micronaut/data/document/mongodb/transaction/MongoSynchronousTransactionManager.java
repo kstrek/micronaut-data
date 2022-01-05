@@ -1,3 +1,18 @@
+/*
+ * Copyright 2017-2022 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.micronaut.data.document.mongodb.transaction;
 
 import com.mongodb.TransactionOptions;
@@ -18,21 +33,40 @@ import io.micronaut.transaction.support.TransactionSynchronizationManager;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Mongo synchronous transaction manager.
+ *
+ * @author Denis Stepanov
+ * @since 3.3
+ */
 @EachBean(MongoClient.class)
 @Internal
-public class MongoSynchronousTransactionManager extends AbstractSynchronousTransactionManager<ClientSession> {
+public final class MongoSynchronousTransactionManager extends AbstractSynchronousTransactionManager<ClientSession> {
 
     private final MongoClient mongoClient;
 
+    /**
+     * Default constructor.
+     *
+     * @param mongoClient The mongo client
+     */
     public MongoSynchronousTransactionManager(MongoClient mongoClient) {
         this.mongoClient = mongoClient;
     }
 
+    /**
+     * Find existing connection.
+     *
+     * @return The client session
+     */
     @Nullable
-    public ClientSession findConnection() {
+    public ClientSession findClientSession() {
         return (ClientSession) TransactionSynchronizationManager.getResource(mongoClient);
     }
 
+    /**
+     * Close existing connection.
+     */
     public void closeClientSession() {
         ClientSession clientSession = (ClientSession) TransactionSynchronizationManager.unbindResource(mongoClient);
         if (clientSession != null) {
@@ -42,7 +76,7 @@ public class MongoSynchronousTransactionManager extends AbstractSynchronousTrans
 
     @Override
     public ClientSession getConnection() {
-        ClientSession clientSession = findConnection();
+        ClientSession clientSession = findClientSession();
         if (clientSession == null) {
             throw new NoTransactionException("No active Mongo client session!");
         }

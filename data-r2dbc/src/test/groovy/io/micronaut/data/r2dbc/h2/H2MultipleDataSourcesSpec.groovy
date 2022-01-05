@@ -23,7 +23,7 @@ class H2MultipleDataSourcesSpec extends Specification implements H2TestPropertyP
 
     void 'test multiple datasources'() {
         when:"An entity is saved in one datasource"
-        Mono.from(ownerRepository.deleteAll()).flatMapMany().next().block()
+        Mono.from(ownerRepository.deleteAll()).block()
         Flux.from(ownerRepository.saveAll([new Owner("Fred"), new Owner("Bob")])).collectList().block()
         Mono.from(otherRepository.saveAll([new Owner("Joe")])).block()
 

@@ -26,6 +26,7 @@ import io.micronaut.data.annotation.TypeRole;
 import io.micronaut.data.exceptions.DataAccessException;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.DataType;
+import io.micronaut.data.model.Embedded;
 import io.micronaut.data.model.PersistentEntity;
 import io.micronaut.data.model.PersistentProperty;
 import io.micronaut.data.model.query.QueryModel;
@@ -52,6 +53,7 @@ import io.micronaut.inject.qualifiers.Qualifiers;
 import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;
+import java.util.AbstractMap;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -59,6 +61,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Abstract SQL repository implementation not specifically bound to JDBC.
@@ -71,7 +74,6 @@ import java.util.stream.Collectors;
  * @author Denis Stepanov
  * @since 1.0.0
  */
-@SuppressWarnings("FileLength")
 @Internal
 public abstract class AbstractSqlRepositoryOperations<Cnt, RS, PS, Exc extends Exception>
         extends AbstractRepositoryOperations<Cnt, PS>
@@ -313,6 +315,17 @@ public abstract class AbstractSqlRepositoryOperations<Cnt, RS, PS, Exc extends E
         });
     }
 
+    /**
+     * Resolve SQL insert association operation.
+     *
+     * @param repositoryType   The repository type
+     * @param dialect          The dialect
+     * @param association      The association
+     * @param persistentEntity The persistent entity
+     * @param entity           The entity
+     * @param <T>              The entity type
+     * @return The operation
+     */
     protected <T> DBOperation resolveSqlInsertAssociation(Class<?> repositoryType, Dialect dialect, RuntimeAssociation<T> association, RuntimePersistentEntity<T> persistentEntity, T entity) {
         String sqlInsert = resolveAssociationInsert(repositoryType, persistentEntity, association);
         return new DBOperation(sqlInsert, dialect) {
@@ -340,6 +353,29 @@ public abstract class AbstractSqlRepositoryOperations<Cnt, RS, PS, Exc extends E
                 }
             }
         };
+    }
+
+    private Stream<Map.Entry<PersistentProperty, Object>> idPropertiesWithValues(PersistentProperty property, Object value) {
+        Object propertyValue = ((RuntimePersistentProperty) property).getProperty().get(value);
+        if (property instanceof Embedded) {
+            Embedded embedded = (Embedded) property;
+            PersistentEntity embeddedEntity = embedded.getAssociatedEntity();
+            return embeddedEntity.getPersistentProperties()
+                    .stream()
+                    .flatMap(prop -> idPropertiesWithValues(prop, propertyValue));
+        } else if (property instanceof Association) {
+            Association association = (Association) property;
+            if (association.isForeignKey()) {
+                return Stream.empty();
+            }
+            PersistentEntity associatedEntity = association.getAssociatedEntity();
+            PersistentProperty identity = associatedEntity.getIdentity();
+            if (identity == null) {
+                throw new IllegalStateException("Identity cannot be missing for: " + associatedEntity);
+            }
+            return idPropertiesWithValues(identity, propertyValue);
+        }
+        return Stream.of(new AbstractMap.SimpleEntry<>(property, propertyValue));
     }
 
     /**
@@ -417,6 +453,17 @@ public abstract class AbstractSqlRepositoryOperations<Cnt, RS, PS, Exc extends E
         public int hashCode() {
             return Objects.hash(repositoryType, entityType);
         }
+    }
+
+
+    /**
+     * Functional interface used to supply a statement.
+     *
+     * @param <PS> The prepared statement type
+     */
+    @FunctionalInterface
+    protected interface StatementSupplier<PS> {
+        PS create(String ps) throws Exception;
     }
 
 }

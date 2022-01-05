@@ -46,7 +46,7 @@ public final class TransactionalClientSessionInterceptor implements MethodInterc
 
     @Override
     public Object intercept(MethodInvocationContext<ClientSession, Object> context) {
-        ClientSession clientSession = transactionManager.findConnection();
+        ClientSession clientSession = transactionManager.findClientSession();
         if (clientSession == null) {
             throw new NoTransactionException("No current transaction present. Consider declaring @Transactional on the surrounding method");
         }
