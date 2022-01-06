@@ -1,5 +1,4 @@
 dependencies {
-    annotationProcessor libs.micronaut.serde.processor
     annotationProcessor "io.micronaut:micronaut-inject-java"
     annotationProcessor project(":data-processor")
     compileOnly "io.micronaut:micronaut-inject-groovy"
@@ -11,8 +10,6 @@ dependencies {
     implementation "javax.persistence:javax.persistence-api:$javaxPersistenceVersion"
     runtimeOnly "cglib:cglib-nodep:3.3.0"
     runtimeOnly "org.objenesis:objenesis:3.2"
-
-    compileOnly libs.mongodb.driver.sync
 
     implementation "io.micronaut.test:micronaut-test-spock"
     implementation  "io.micronaut.test:micronaut-test-core"

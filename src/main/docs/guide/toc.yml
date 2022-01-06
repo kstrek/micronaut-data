@@ -82,7 +82,17 @@ mongo:
   title: Micronaut Data Mongo
   mongoQuickStart: Quick Start
   mongoRepositories: Repositories
-  mongoOptimisticLocking: Quick Start
+  mongoMapping:
+    title: Mapping Entities
+    mongoAnnotations: Mapping Annotations
+    mongoIdGenerator: ID Generation
+    mongoCompositeId: Composite Primary Keys
+    mongoConstructorArguments: Constructor Arguments
+    mongoNaming: Naming Strategies
+    mongoAssociationMapping: Association Mapping
+    mongoAssociationFetching: Association Fetching
+  mongoJoinQueries: Join Queries
+  mongoOptimisticLocking: Optimistic locking
 graal:
   title: Going Native with GraalVM
 spring:

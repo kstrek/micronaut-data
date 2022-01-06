@@ -1,1 +1,8 @@
-Micronaut Data supports the generation of repositories that use native SQL. The implementation is general enough that any transport can use be used for executing the SQL queries, as of this writing JDBC and R2DBC are supported implementations for executing SQL queries.
+Micronaut Data Mongo supports most of the things that are possible to do with JPA and JDBC/R2DBC implementations, including:
+
+- Repositories with compile-time generated filtering, aggregation and projection queries
+- Entities relations and cascading
+- Transactions
+- JPA Criteria API
+
+In the first version of Micronaut Data Mongo only synchronous Mongo driver is supported.
