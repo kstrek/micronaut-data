@@ -19,12 +19,14 @@ import com.mongodb.ConnectionString;
 import com.mongodb.client.MongoClient;
 import io.micronaut.configuration.mongo.core.DefaultMongoConfiguration;
 import io.micronaut.configuration.mongo.core.NamedMongoConfiguration;
+import io.micronaut.context.BeanLocator;
 import io.micronaut.context.annotation.EachBean;
 import io.micronaut.context.annotation.Factory;
 import io.micronaut.context.annotation.Primary;
 import io.micronaut.context.exceptions.ConfigurationException;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.util.StringUtils;
+import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.inject.Singleton;
 
 @Internal
@@ -43,7 +45,8 @@ final class MongoFactory {
 
     @EachBean(NamedMongoConfiguration.class)
     @Singleton
-    MongoDatabaseFactory namedMongoDatabaseFactory(NamedMongoConfiguration mongoConfiguration, MongoClient mongoClient) {
+    MongoDatabaseFactory namedMongoDatabaseFactory(NamedMongoConfiguration mongoConfiguration, BeanLocator beanLocator) {
+        MongoClient mongoClient = beanLocator.getBean(MongoClient.class, Qualifiers.byName(mongoConfiguration.getServerName()));
         return mongoConfiguration.getConnectionString()
                 .map(ConnectionString::getDatabase)
                 .filter(StringUtils::isNotEmpty)

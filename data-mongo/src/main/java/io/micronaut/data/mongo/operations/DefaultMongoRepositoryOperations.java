@@ -29,7 +29,9 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
+import io.micronaut.context.BeanContext;
 import io.micronaut.context.annotation.EachBean;
+import io.micronaut.context.annotation.Parameter;
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.NonNull;
@@ -40,8 +42,6 @@ import io.micronaut.core.convert.ConversionContext;
 import io.micronaut.core.type.Argument;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
-import io.micronaut.data.mongo.database.MongoDatabaseFactory;
-import io.micronaut.data.mongo.transaction.MongoSynchronousTransactionManager;
 import io.micronaut.data.exceptions.DataAccessException;
 import io.micronaut.data.model.DataType;
 import io.micronaut.data.model.Page;
@@ -66,6 +66,8 @@ import io.micronaut.data.model.runtime.RuntimePersistentProperty;
 import io.micronaut.data.model.runtime.UpdateBatchOperation;
 import io.micronaut.data.model.runtime.UpdateOperation;
 import io.micronaut.data.model.runtime.convert.AttributeConverter;
+import io.micronaut.data.mongo.database.MongoDatabaseFactory;
+import io.micronaut.data.mongo.transaction.MongoSynchronousTransactionManager;
 import io.micronaut.data.operations.async.AsyncCapableRepository;
 import io.micronaut.data.operations.reactive.ReactiveCapableRepository;
 import io.micronaut.data.operations.reactive.ReactiveRepositoryOperations;
@@ -80,6 +82,7 @@ import io.micronaut.data.runtime.operations.internal.AbstractSyncEntityOperation
 import io.micronaut.data.runtime.operations.internal.OperationContext;
 import io.micronaut.data.runtime.operations.internal.SyncCascadeOperations;
 import io.micronaut.http.codec.MediaTypeCodec;
+import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.inject.Named;
 import org.bson.BsonArray;
 import org.bson.BsonDocument;
@@ -136,30 +139,31 @@ final class DefaultMongoRepositoryOperations extends AbstractRepositoryOperation
     /**
      * Default constructor.
      *
+     * @param serverName                 The server name
+     * @param beanContext                The bean context
      * @param codecs                     The media type codecs
      * @param dateTimeProvider           The date time provider
      * @param runtimeEntityRegistry      The entity registry
      * @param conversionService          The conversion service
      * @param attributeConverterRegistry The attribute converter registry
      * @param mongoClient                The Mongo client
-     * @param transactionManager         The Mongo transaction manager
-     * @param mongoDatabaseFactory       The Mongo database factory
      * @param executorService            The executor service
      */
-    protected DefaultMongoRepositoryOperations(List<MediaTypeCodec> codecs,
+    protected DefaultMongoRepositoryOperations(@Parameter String serverName,
+                                               BeanContext beanContext,
+                                               List<MediaTypeCodec> codecs,
                                                DateTimeProvider<Object> dateTimeProvider,
                                                RuntimeEntityRegistry runtimeEntityRegistry,
                                                DataConversionService<?> conversionService,
                                                AttributeConverterRegistry attributeConverterRegistry,
                                                MongoClient mongoClient,
-                                               MongoSynchronousTransactionManager transactionManager,
-                                               MongoDatabaseFactory mongoDatabaseFactory,
                                                @Named("io") @Nullable ExecutorService executorService) {
         super(codecs, dateTimeProvider, runtimeEntityRegistry, conversionService, attributeConverterRegistry);
         this.mongoClient = mongoClient;
         this.cascadeOperations = new SyncCascadeOperations<>(conversionService, this);
-        this.transactionManager = transactionManager;
-        this.mongoDatabaseFactory = mongoDatabaseFactory;
+        boolean isPrimary = "Primary".equals(serverName);
+        this.transactionManager = beanContext.getBean(MongoSynchronousTransactionManager.class, isPrimary ? null : Qualifiers.byName(serverName));
+        this.mongoDatabaseFactory = beanContext.getBean(MongoDatabaseFactory.class, isPrimary ? null : Qualifiers.byName(serverName));
         this.executorService = executorService;
     }
 

@@ -537,7 +537,9 @@ public final class MongoQueryBuilder implements QueryBuilder {
         lookup.put("from", from);
         lookup.put("localField", localField);
         lookup.put("foreignField", foreignField);
-        lookup.put("pipeline", pipeline);
+        if (!pipeline.isEmpty()) {
+            lookup.put("pipeline", pipeline);
+        }
         lookup.put("as", as);
         return singletonMap("$lookup", lookup);
     }
