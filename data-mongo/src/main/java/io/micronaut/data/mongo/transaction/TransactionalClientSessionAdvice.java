@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.transaction;
+package io.micronaut.data.mongo.transaction;
 
 import io.micronaut.aop.Introduction;
 import io.micronaut.context.annotation.Type;

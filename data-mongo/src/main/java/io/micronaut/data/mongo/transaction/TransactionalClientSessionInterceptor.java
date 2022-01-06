@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.transaction;
+package io.micronaut.data.mongo.transaction;
 
 import com.mongodb.client.ClientSession;
 import io.micronaut.aop.MethodInterceptor;

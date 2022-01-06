@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 original authors
+ * Copyright 2017-2022 original authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,22 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.transaction;
+package io.micronaut.data.mongo.operations;
 
-import com.mongodb.client.ClientSession;
-import io.micronaut.context.annotation.EachBean;
-import io.micronaut.core.annotation.Internal;
+import io.micronaut.data.operations.RepositoryOperations;
 
 /**
- * Allows injecting a {@link com.mongodb.client.ClientSession} instance as a bean with any methods invoked
- * on the connection being delegated to connection bound to the current transaction.
+ * Mongo DB repository operations.
  *
  * @author Denis Stepanov
- * @since 3.3
+ * @since 3.3.0
  */
-@EachBean(MongoSynchronousTransactionManager.class)
-@TransactionalClientSessionAdvice
-@Internal
-public interface TransactionalClientSession extends ClientSession {
-
+public interface MongoRepositoryOperations extends RepositoryOperations {
 }

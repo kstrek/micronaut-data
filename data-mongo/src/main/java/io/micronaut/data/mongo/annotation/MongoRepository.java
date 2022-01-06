@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.annotation;
+package io.micronaut.data.mongo.annotation;
 
 import io.micronaut.data.annotation.Repository;
 import io.micronaut.data.annotation.RepositoryConfiguration;
 import io.micronaut.data.document.model.query.builder.MongoQueryBuilder;
-import io.micronaut.data.document.mongodb.operations.MongoRepositoryOperations;
+import io.micronaut.data.mongo.operations.MongoRepositoryOperations;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

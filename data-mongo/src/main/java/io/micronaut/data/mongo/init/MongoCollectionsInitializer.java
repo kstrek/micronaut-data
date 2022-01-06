@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.init;
+package io.micronaut.data.mongo.init;
 
 import com.mongodb.client.MongoDatabase;
 import io.micronaut.configuration.mongo.core.AbstractMongoConfiguration;
@@ -27,7 +27,7 @@ import io.micronaut.core.beans.BeanIntrospection;
 import io.micronaut.core.beans.BeanIntrospector;
 import io.micronaut.data.annotation.MappedEntity;
 import io.micronaut.data.annotation.Relation;
-import io.micronaut.data.document.mongodb.database.MongoDatabaseFactory;
+import io.micronaut.data.mongo.database.MongoDatabaseFactory;
 import io.micronaut.data.model.Association;
 import io.micronaut.data.model.PersistentEntity;
 import io.micronaut.data.model.PersistentProperty;

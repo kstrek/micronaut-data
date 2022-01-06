@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.database;
+package io.micronaut.data.mongo.database;
 
 import com.mongodb.client.MongoDatabase;
 import io.micronaut.core.annotation.Experimental;

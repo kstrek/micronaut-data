@@ -33,7 +33,7 @@ dependencyResolutionManagement {
 
 rootProject.name = 'data'
 
-include 'data-bom'
+//include 'data-bom'
 include 'data-model'
 include 'data-processor'
 include 'data-document-processor'

@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.serde;
+package io.micronaut.data.mongo.serde;
 
 import io.micronaut.core.beans.BeanProperty;
 import io.micronaut.data.annotation.GeneratedValue;
-import io.micronaut.data.document.mongodb.operations.Utils;
+import io.micronaut.data.mongo.operations.Utils;
 import io.micronaut.data.model.runtime.RuntimePersistentEntity;
 import io.micronaut.data.model.runtime.RuntimePersistentProperty;
 import org.bson.BsonValue;

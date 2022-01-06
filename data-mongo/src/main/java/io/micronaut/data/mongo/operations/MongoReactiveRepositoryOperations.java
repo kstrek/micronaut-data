@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.operations;
+package io.micronaut.data.mongo.operations;
 
 import io.micronaut.data.operations.reactive.ReactiveRepositoryOperations;
 

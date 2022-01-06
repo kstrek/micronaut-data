@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.data.document.mongodb.operations;
+package io.micronaut.data.mongo.operations;
 
 import com.mongodb.client.AggregateIterable;
 import com.mongodb.client.ClientSession;
@@ -40,8 +40,8 @@ import io.micronaut.core.convert.ConversionContext;
 import io.micronaut.core.type.Argument;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.core.util.StringUtils;
-import io.micronaut.data.document.mongodb.database.MongoDatabaseFactory;
-import io.micronaut.data.document.mongodb.transaction.MongoSynchronousTransactionManager;
+import io.micronaut.data.mongo.database.MongoDatabaseFactory;
+import io.micronaut.data.mongo.transaction.MongoSynchronousTransactionManager;
 import io.micronaut.data.exceptions.DataAccessException;
 import io.micronaut.data.model.DataType;
 import io.micronaut.data.model.Page;

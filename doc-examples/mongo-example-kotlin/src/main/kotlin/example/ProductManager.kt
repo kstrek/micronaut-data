@@ -2,9 +2,7 @@
 package example
 
 import com.mongodb.session.ClientSession
-import io.micronaut.data.document.mongodb.database.MongoDatabaseFactory
 import io.micronaut.transaction.SynchronousTransactionManager
-import java.sql.Connection
 import jakarta.inject.Singleton
 import org.bson.types.ObjectId
 
