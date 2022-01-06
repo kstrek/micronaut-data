@@ -78,6 +78,11 @@ sql:
       r2querying: Reactive repositories
       r2transactionManagement: Transactions
       r2entityEvents: Reactive Entity Events
+mongo:
+  title: Micronaut Data Mongo
+  mongoQuickStart: Quick Start
+  mongoRepositories: Repositories
+  mongoOptimisticLocking: Quick Start
 graal:
   title: Going Native with GraalVM
 spring:

@@ -25,8 +25,8 @@ public abstract class AbstractMongoSpec implements TestPropertyProvider {
         mongoDBContainer.start();
         Map<String, String> m = new HashMap<>();
         m.put("mongodb.automaticClassModels", "false");
-        m.put( "mongodb.uri", mongoDBContainer.getReplicaSetUrl());
-        m.put( "mongodb.uuid-representation", UuidRepresentation.STANDARD.name());
+        m.put("mongodb.uri", mongoDBContainer.getReplicaSetUrl());
+        m.put("mongodb.uuid-representation", UuidRepresentation.STANDARD.name());
         return m;
     }
 }

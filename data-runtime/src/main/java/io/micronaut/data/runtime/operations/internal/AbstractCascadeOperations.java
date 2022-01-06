@@ -103,7 +103,7 @@ abstract class AbstractCascadeOperations {
                     case MANY_TO_MANY:
                         final PersistentAssociationPath inverse = association.getInversePathSide().orElse(null);
                         Iterable<Object> children = (Iterable<Object>) association.getProperty().get(entity);
-                        if (!children.iterator().hasNext()) {
+                        if (children == null || !children.iterator().hasNext()) {
                             continue;
                         }
                         if (inverse != null && inverse.getAssociation().getKind() == Relation.Kind.MANY_TO_ONE) {
@@ -112,7 +112,7 @@ abstract class AbstractCascadeOperations {
                                 Object c = iterator.next();
                                 Object newC = inverse.setPropertyValue(c, entity);
                                 if (c != newC) {
-                                    iterator.set(c);
+                                    iterator.set(newC);
                                 }
                             }
                             children = entities;
