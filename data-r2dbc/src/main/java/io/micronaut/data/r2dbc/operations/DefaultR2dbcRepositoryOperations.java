@@ -437,7 +437,8 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Closing Connection for DataSource: " + dataSourceName);
             }
-            return connection.close();
+            return Mono.from(connection.close())
+                    .doOnEach(signal -> LOG.debug("[{}] Successfully closed connection for DataSource: " + dataSourceName, signal));
         }));
     }
 
@@ -565,7 +566,9 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Committing transaction for DataSource {}.", dataSourceName);
             }
-            return Flux.from(status.getConnection().commitTransaction()).doFinally(sig -> status.completed = true);
+            return Flux.from(status.getConnection().commitTransaction())
+                    .doOnEach(signal -> LOG.debug("[{}] Successfully committed transaction for DataSource {}.", signal, dataSourceName))
+                    .doFinally(sig -> status.completed = true);
         }
     }
 

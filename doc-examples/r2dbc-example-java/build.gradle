@@ -25,6 +25,7 @@ dependencies {
 
     testImplementation "io.micronaut:micronaut-http-client"
     testImplementation "org.testcontainers:mysql"
+    testImplementation "org.awaitility:awaitility:4.1.1"
 }
 
 nativeImage {
