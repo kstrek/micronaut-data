@@ -61,7 +61,7 @@ trait DatabaseTestPropertyProvider implements TestPropertyProvider {
             case "sqlserver":
                 return new MSSQLServerContainer<>()
             case "oracle":
-                return new OracleContainer(DockerImageName.parse("gvenzl/oracle-xe:18"))
+                return new OracleContainer(DockerImageName.parse("gvenzl/oracle-xe:18.4.0"))
                         .withEnv("ORACLE_PASSWORD", "password")
                         .withPassword("password")
             case "mariadb":
@@ -94,6 +94,11 @@ trait DatabaseTestPropertyProvider implements TestPropertyProvider {
                 "r2dbc.datasources.default.dialect"                  : dialect,
                 "r2dbc.datasources.default.options.connectTimeout"   : Duration.ofMinutes(1).toString()
         ] as Map<String, String>
+        if (dialect == Dialect.ORACLE) {
+            map += [
+                    "r2dbc.datasources.default.database"                 : container == null ? "" : container.getDatabaseName()
+            ]
+        }
         if (usePool()) {
             String poolProtocol
             switch (dialect) {
