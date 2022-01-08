@@ -442,6 +442,11 @@ final class DefaultR2dbcRepositoryOperations extends AbstractSqlRepositoryOperat
         });
     }
 
+    @Override
+    public boolean isSupportsBatchInsert(R2dbcOperationContext context, RuntimePersistentEntity<?> persistentEntity) {
+        return isSupportsBatchInsert(persistentEntity, context.dialect);
+    }
+
     /**
      * Represents the current reactive transaction status.
      */
